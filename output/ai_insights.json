@@ -1,0 +1,394 @@
+{
+  "gaps": [
+    {
+      "topic": "Cybersecurity",
+      "article_count": 18,
+      "coverage_pct": 0.6,
+      "num_competitors": 5,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 87.97
+    },
+    {
+      "topic": "KYB",
+      "article_count": 57,
+      "coverage_pct": 1.8,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 43.34
+    },
+    {
+      "topic": "DPDP & Privacy",
+      "article_count": 62,
+      "coverage_pct": 2.0,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 36.78
+    },
+    {
+      "topic": "Video KYC",
+      "article_count": 77,
+      "coverage_pct": 2.4,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 27.15
+    },
+    {
+      "topic": "Fintech & Payments",
+      "article_count": 111,
+      "coverage_pct": 3.5,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 17.12
+    },
+    {
+      "topic": "Global & Cross-Border",
+      "article_count": 100,
+      "coverage_pct": 3.2,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 15.2
+    },
+    {
+      "topic": "AML",
+      "article_count": 208,
+      "coverage_pct": 6.6,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 13.7
+    },
+    {
+      "topic": "HR & Employment",
+      "article_count": 93,
+      "coverage_pct": 2.9,
+      "num_competitors": 5,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 13.62
+    },
+    {
+      "topic": "Digital Onboarding",
+      "article_count": 158,
+      "coverage_pct": 5.0,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 12.03
+    },
+    {
+      "topic": "Identity Verification",
+      "article_count": 216,
+      "coverage_pct": 6.8,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 10.56
+    },
+    {
+      "topic": "Background Verification",
+      "article_count": 169,
+      "coverage_pct": 5.3,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 10.12
+    },
+    {
+      "topic": "Fraud Detection",
+      "article_count": 331,
+      "coverage_pct": 10.5,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 8.61
+    },
+    {
+      "topic": "Banking & Lending",
+      "article_count": 271,
+      "coverage_pct": 8.6,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 8.41
+    },
+    {
+      "topic": "Risk & Compliance",
+      "article_count": 329,
+      "coverage_pct": 10.4,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 8.09
+    },
+    {
+      "topic": "KYC",
+      "article_count": 339,
+      "coverage_pct": 10.7,
+      "num_competitors": 6,
+      "competitors": [
+        "AuthBridge",
+        "Bureau",
+        "DigiTap",
+        "HyperVerge",
+        "IDfy",
+        "Signzy"
+      ],
+      "gap_score": 7.29
+    }
+  ],
+  "insights": {
+    "executive_summary": "SEESEC operates in a crowded Indian KYC/compliance SaaS market where competitors like Signzy, HyperVerge, and AuthBridge have established deep content moats across KYC, fraud detection, and identity verification. However, high-opportunity gaps exist in Cybersecurity, KYB, and DPDP & Privacy — topics where competitor coverage is thin relative to search demand and regulatory urgency in 2025-2026 India. By aggressively targeting these underserved topics with India-specific regulatory angles (RBI, DPDP Act, PMLA), SEESEC can capture first-mover SEO authority and position itself as the most compliance-forward B2B SaaS brand for fintechs and NBFCs.",
+    "gap_analyses": [
+      {
+        "topic": "Cybersecurity",
+        "gap_score": 87.97,
+        "strategic_importance": "CRITICAL",
+        "why_competitors_underperform": "Competitors treat cybersecurity as a peripheral topic, producing generic posts rather than tying it to their core identity verification and KYC infrastructure — leaving a vacuum for platform-specific cybersecurity content.",
+        "seesec_opportunity": "SEESEC can own the intersection of KYC infrastructure security and RBI's cybersecurity guidelines for fintechs and NBFCs, a niche no competitor has claimed with depth.",
+        "seo_titles": [
+          "RBI Cybersecurity Framework 2025: What Every NBFC Must Do to Protect KYC Data",
+          "How Secure Is Your KYC Pipeline? A Cybersecurity Audit Checklist for Indian Fintechs (2026)",
+          "API Security in Identity Verification: Why Your KYC Vendor Could Be Your Biggest Vulnerability"
+        ],
+        "positioning_strategy": "Position SEESEC as the only KYC platform that bakes cybersecurity compliance into its architecture, directly referencing RBI's Master Direction on IT Governance and CERT-In guidelines.",
+        "target_audience": "CTOs, CISOs, and compliance heads at NBFCs, fintechs, and digital banks subject to RBI IT and cybersecurity mandates."
+      },
+      {
+        "topic": "KYB",
+        "gap_score": 43.34,
+        "strategic_importance": "HIGH",
+        "why_competitors_underperform": "All 6 competitors cover KYB but mostly with shallow, definitional content — none have produced India-specific guides covering MCA21, GST verification, beneficial ownership tracing, or RBI's onboarding norms for business accounts.",
+        "seesec_opportunity": "SEESEC can dominate KYB for the Indian B2B context by publishing the definitive guide to business verification using MCA21, GSTIN, and UBO (Ultimate Beneficial Owner) checks aligned to PMLA obligations.",
+        "seo_titles": [
+          "KYB Verification in India 2026: MCA21, GSTIN & UBO Checks Explained for Fintechs",
+          "How to Automate Know Your Business (KYB) Compliance Under PMLA and RBI Norms",
+          "UBO Disclosure in India: A Step-by-Step KYB Guide for NBFCs Onboarding Business Clients"
+        ],
+        "positioning_strategy": "Own the 'KYB for India' narrative by tying business verification workflows to PMLA beneficial ownership rules and RBI's KYC Master Direction Section 16 on non-individual customers.",
+        "target_audience": "Compliance officers, onboarding product managers, and risk teams at NBFCs, neo-banks, and B2B fintechs onboarding business entities."
+      },
+      {
+        "topic": "DPDP & Privacy",
+        "gap_score": 36.78,
+        "strategic_importance": "HIGH",
+        "why_competitors_underperform": "Competitors publish awareness-level DPDP Act explainers but fail to connect privacy law obligations to their own KYC and identity verification data pipelines, missing the practitioner-level angle.",
+        "seesec_opportunity": "SEESEC can publish actionable DPDP compliance content specifically for KYC data controllers — covering consent management, data minimisation in identity checks, and breach notification duties for fintech platforms.",
+        "seo_titles": [
+          "DPDP Act 2023 & KYC Data: What Fintechs Must Do Before the Compliance Deadline (2026)",
+          "Consent Management for KYC: How to Stay DPDP-Compliant Without Breaking Onboarding UX",
+          "Data Minimisation in Identity Verification: A Practical DPDP Checklist for NBFCs"
+        ],
+        "positioning_strategy": "Position SEESEC as the KYC platform that has privacy-by-design built in, making DPDP compliance a product differentiator rather than a legal afterthought.",
+        "target_audience": "Data protection officers (DPOs), legal/compliance teams, and product leaders at fintechs and banks processing Aadhaar, PAN, and biometric data."
+      },
+      {
+        "topic": "Video KYC",
+        "gap_score": 27.15,
+        "strategic_importance": "HIGH",
+        "why_competitors_underperform": "Existing competitor content on Video KYC is largely dated (pre-2024) and does not reflect RBI's 2024-2025 V-CIP updates, AI-based liveness detection requirements, or UIDAI's Aadhaar-based video verification guidelines.",
+        "seesec_opportunity": "SEESEC can publish the most current, RBI-compliant Video KYC implementation guide, covering V-CIP audit trail requirements, AI liveness checks, and integration with DigiLocker for document verification.",
+        "seo_titles": [
+          "RBI Video KYC (V-CIP) Compliance Guide 2026: Updated Rules, Audit Trails & AI Liveness Requirements",
+          "Video KYC vs. OTP-Based KYC: Which Is Right for Your NBFC Under RBI's 2025 Guidelines?",
+          "How to Implement AI-Powered Video KYC with DigiLocker Integration for Paperless Onboarding"
+        ],
+        "positioning_strategy": "Differentiate SEESEC as the most RBI V-CIP current platform by publishing regularly updated guides that reflect every regulatory change — making SEESEC the go-to reference for Video KYC compliance.",
+        "target_audience": "Product managers, onboarding leads, and compliance teams at lending fintechs, microfinance institutions, and digital banks scaling remote customer acquisition."
+      },
+      {
+        "topic": "DPDP & Privacy",
+        "gap_score": 36.78,
+        "strategic_importance": "HIGH",
+        "why_competitors_underperform": "Most competitors conflate DPDP Act coverage with generic GDPR comparisons, ignoring the specific operational impact on India's digital identity and KYC infrastructure under the Data Protection Board framework.",
+        "seesec_opportunity": "SEESEC can publish a B2B-focused DPDP readiness toolkit for KYC data processors, covering contractual obligations, cross-border data transfer rules, and fiduciary duties — content no competitor has produced at this depth.",
+        "seo_titles": [
+          "DPDP Act & Aadhaar Data: What Significant Data Fiduciaries in Fintech Must Prepare For in 2026",
+          "Cross-Border KYC Data Transfers Under India's DPDP Act: Rules Every Global Fintech Must Know",
+          "DPDP Compliance Toolkit for KYC Platforms: Consent, Retention & Breach Notification Policies"
+        ],
+        "positioning_strategy": "Establish SEESEC as the authoritative voice on privacy-compliant KYC by producing structured toolkits, templates, and checklists that practitioners can directly use — not just read.",
+        "target_audience": "DPOs, compliance managers, and legal heads at fintechs, NBFCs, and enterprises handling large volumes of personal and sensitive financial data."
+      }
+    ],
+    "content_recommendations": [
+      {
+        "title": "RBI Cybersecurity Framework for NBFCs 2025: Protecting Your KYC Infrastructure End-to-End",
+        "topic": "Cybersecurity",
+        "content_type": "Pillar Blog Post",
+        "target_keyword": "RBI cybersecurity framework NBFC 2025",
+        "why_now": "RBI's updated IT and cybersecurity directions for NBFCs came into effect in 2024-2025 and most regulated entities are in active remediation — search demand is peaking and no competitor owns this keyword cluster.",
+        "estimated_impact": "High",
+        "outline": [
+          "Overview of RBI's Master Direction on IT Governance, Risk & Controls and what has changed in 2025",
+          "The 5 highest-risk cybersecurity vulnerabilities specific to KYC and identity verification pipelines",
+          "How SEESEC's architecture aligns with RBI's cybersecurity requirements (encryption, access control, audit logs)",
+          "CERT-In incident reporting obligations for fintech and NBFC KYC platforms",
+          "A cybersecurity audit checklist for compliance teams to self-assess their KYC vendor"
+        ]
+      },
+      {
+        "title": "KYB in India 2026: The Complete Guide to Business Verification Using MCA21, GSTIN & UBO Checks",
+        "topic": "KYB",
+        "content_type": "Long-Form Guide",
+        "target_keyword": "KYB verification India 2026",
+        "why_now": "PMLA amendments in 2023-2024 tightened UBO disclosure requirements and RBI has increased scrutiny of business account onboarding — demand for India-specific KYB content has no adequate supply from any competitor.",
+        "estimated_impact": "High",
+        "outline": [
+          "What is KYB and how it differs from KYC — the Indian regulatory context under PMLA and RBI KYC Master Direction",
+          "Step-by-step business verification workflow: CIN lookup via MCA21, GSTIN validation, and director PAN checks",
+          "Ultimate Beneficial Ownership (UBO) tracing: PMLA obligations and how to identify beneficial owners above the 25% threshold",
+          "Automating KYB with APIs: How SEESEC integrates MCA, GSTIN, and bureau data in a single workflow",
+          "KYB compliance checklist for NBFCs onboarding proprietorships, partnerships, and private limited companies"
+        ]
+      },
+      {
+        "title": "DPDP Act Compliance for KYC Platforms: A 2026 Action Plan for Indian Fintechs",
+        "topic": "DPDP & Privacy",
+        "content_type": "Blog Post",
+        "target_keyword": "DPDP Act compliance KYC fintech India",
+        "why_now": "The Digital Personal Data Protection Act's implementation rules are being finalised in 2025-2026 and fintechs processing Aadhaar and PAN data are scrambling to operationalise consent management — this is the most time-sensitive regulatory content opportunity.",
+        "estimated_impact": "High",
+        "outline": [
+          "DPDP Act 2023 at a glance: Key obligations for data fiduciaries in the KYC and identity verification space",
+          "Consent management in practice: How to capture, store, and revoke consent during digital onboarding without UX friction",
+          "Data minimisation and purpose limitation: Applying DPDP principles to Aadhaar, PAN, and biometric KYC data flows",
+          "Breach notification timelines under DPDP and CERT-In: What your KYC platform must do in 72 hours",
+          "How SEESEC's platform helps fintechs achieve DPDP compliance by design — not by retrofit"
+        ]
+      },
+      {
+        "title": "Video KYC (V-CIP) Implementation Guide 2026: RBI Rules, AI Liveness & DigiLocker Integration",
+        "topic": "Video KYC",
+        "content_type": "Technical Guide",
+        "target_keyword": "Video KYC V-CIP implementation RBI 2026",
+        "why_now": "RBI's V-CIP guidelines have been updated multiple times since 2020 and fintechs scaling remote onboarding in 2026 need current, implementation-ready guidance — most competitor content is outdated and non-technical.",
+        "estimated_impact": "High",
+        "outline": [
+          "RBI V-CIP regulations in 2026: What's changed from the original 2020 circular and key compliance requirements",
+          "Technical architecture of a compliant Video KYC flow: AI liveness detection, geotagging, and encrypted recording",
+          "DigiLocker integration in Video KYC: How to use Aadhaar XML and DigiLocker documents to eliminate physical document uploads",
+          "V-CIP audit trail requirements: Storage duration, access control, and RBI inspection readiness",
+          "Video KYC vs. Offline Aadhaar KYC vs. OTP-based KYC: Choosing the right method for your customer segment"
+        ]
+      },
+      {
+        "title": "AML Compliance for Indian Fintechs in 2026: PMLA, FIU-IND Reporting & Transaction Monitoring Explained",
+        "topic": "AML",
+        "content_type": "Pillar Blog Post",
+        "target_keyword": "AML compliance fintech India PMLA 2026",
+        "why_now": "FATF's 2023 India mutual evaluation and subsequent PMLA amendments have forced fintechs and NBFCs to upgrade AML programs urgently — this is a high-volume search topic with significant authority-building potential.",
+        "estimated_impact": "High",
+        "outline": [
+          "PMLA 2002 and 2023 amendments: What every fintech and NBFC must understand about their reporting obligations",
+          "FIU-IND reporting in practice: STR, CTR, and NTR filing requirements and common mistakes that trigger penalties",
+          "Building a transaction monitoring system: Rules-based vs. ML-based approaches for Indian payment and lending fintechs",
+          "Customer risk scoring under AML: How to build a risk-based approach aligned to RBI and FIU-IND expectations",
+          "How SEESEC integrates AML screening, watchlist checks, and adverse media into a unified compliance workflow"
+        ]
+      },
+      {
+        "title": "KYC Automation ROI Calculator: How Much Are Manual KYC Processes Costing Your NBFC in 2026?",
+        "topic": "KYC",
+        "content_type": "Interactive Tool + Blog Post",
+        "target_keyword": "KYC automation ROI NBFC India",
+        "why_now": "NBFCs under RBI pressure to reduce onboarding TAT are actively evaluating KYC automation vendors in mid-2026 — a ROI-focused piece targets bottom-of-funnel buyers at the vendor evaluation stage.",
+        "estimated_impact": "High",
+        "outline": [
+          "The true cost of manual KYC: Agent time, error rates, drop-offs, and RBI audit risk quantified for Indian NBFCs",
+          "KYC automation ROI framework: Key metrics to calculate cost-per-verification, onboarding TAT, and fraud loss reduction",
+          "Interactive ROI calculator: Input your monthly verification volume and get a customised savings estimate",
+          "Case study: How a mid-size NBFC reduced KYC TAT from 48 hours to 4 minutes using SEESEC automation",
+          "What to look for when evaluating a KYC automation vendor: RBI compliance, API uptime SLAs, and integration depth"
+        ]
+      }
+    ]
+  }
+}
