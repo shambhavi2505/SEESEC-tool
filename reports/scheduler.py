@@ -10,7 +10,7 @@ import os
 import sys
 import subprocess
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 # Project root

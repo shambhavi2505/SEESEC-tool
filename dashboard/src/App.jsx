@@ -5,10 +5,24 @@ import {
 } from "recharts";
 
 const API = "http://localhost:8000";
-const COLORS = ["#6366f1","#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899"];
+
+const COLORS = [
+  "#6366f1",
+  "#8b5cf6",
+  "#06b6d4",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#ec4899"
+];
+
 const COMP_COLORS = {
-  AuthBridge:"#6366f1", IDfy:"#8b5cf6", Signzy:"#06b6d4",
-  HyperVerge:"#10b981", Bureau:"#f59e0b", DigiTap:"#ef4444"
+  AuthBridge:"#6366f1",
+  IDfy:"#8b5cf6",
+  Signzy:"#06b6d4",
+  HyperVerge:"#10b981",
+  Bureau:"#f59e0b",
+  DigiTap:"#ef4444"
 };
 
 async function api(path) {

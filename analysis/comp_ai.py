@@ -1,10 +1,13 @@
 import os
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from groq import Groq
+import json
 from dotenv import load_dotenv
+from groq import Groq
+
 load_dotenv()
+
+client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
+)
 
 
 def generate_competitor_summary(company_name, articles):
@@ -26,9 +29,8 @@ Answer these 3 things in JSON format:
 3. seesec_recommendations: What should SEESEC do to compete? Give 3 specific actions.
 
 Respond ONLY with valid JSON, no explanation."""
-
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-20b",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1000,
         temperature=0.3

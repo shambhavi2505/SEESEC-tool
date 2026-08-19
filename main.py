@@ -7,12 +7,32 @@ from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 
-# ─── Project Setup ────────────────────────────────────────────────────────────
+
+# =============================================================================
+# PROJECT SETUP
+# =============================================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-sys.path.append(str(BASE_DIR))
 
-from database.models import SessionLocal, ContentItem, Company
+if str(BASE_DIR) not in sys.path:
+    sys.path.append(str(BASE_DIR))
+
+
+# =============================================================================
+# DATABASE
+# =============================================================================
+
+from database.models import (
+    SessionLocal,
+    ContentItem,
+    Company,
+)
+
+
+# =============================================================================
+# ANALYSIS
+# =============================================================================
+
 from analysis.keywords import (
     get_keyword_freq,
     get_bigram_freq,
@@ -22,6 +42,7 @@ from analysis.keywords import (
     get_content_type_breakdown,
     load_titles,
 )
+
 from analysis.opportunities import (
     get_gaps,
     get_recommendations,
@@ -29,31 +50,51 @@ from analysis.opportunities import (
     get_executive_summary,
     get_opportunities_from_db,
 )
-from scraper.search import find_website
-from scraper.generic import scrape_articles
-from scraper.save_company import save_company_data
-from analysis.comp_ai import generate_competitor_summary
 
-
-# ─── FastAPI App ──────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="SEESEC Competitor Intelligence API",
-    version="2.0.0",
+from analysis.comp_ai import (
+    generate_competitor_summary,
 )
 
 
-# ─── CORS ─────────────────────────────────────────────────────────────────────
+# =============================================================================
+# SCRAPER
+# =============================================================================
+
+from scraper.search import find_website
+from scraper.generic import scrape_articles
+from scraper.save_company import save_company_data
+
+
+# =============================================================================
+# FASTAPI APPLICATION
+# =============================================================================
+
+app = FastAPI(
+    title="SEESEC Competitor Intelligence API",
+    description=(
+        "Real-time competitor content intelligence platform "
+        "for discovering, scraping, analyzing and comparing competitors."
+    ),
+    version="3.0.0",
+)
+
+
+# =============================================================================
+# CORS
+# =============================================================================
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ─── Analysis Status ──────────────────────────────────────────────────────────
+# =============================================================================
+# GLOBAL ANALYSIS STATUS
+# =============================================================================
 
 _scrape_status = {
     "running": False,
@@ -65,21 +106,29 @@ _scrape_status = {
 }
 
 
-# Stores the status of individual company analyses
+# =============================================================================
+# INDIVIDUAL COMPANY STATUS
+# =============================================================================
+
 _company_status = {}
 
 
-# ─── Health Check ─────────────────────────────────────────────────────────────
+# =============================================================================
+# HEALTH CHECK
+# =============================================================================
 
 @app.get("/")
 def root():
     return {
         "status": "ok",
-        "message": "SEESEC Intelligence API v2",
+        "message": "SEESEC Intelligence API",
+        "version": "3.0.0",
     }
 
 
-# ─── Content ──────────────────────────────────────────────────────────────────
+# =============================================================================
+# CONTENT
+# =============================================================================
 
 @app.get("/api/content")
 def get_content(
@@ -112,7 +161,9 @@ def get_content(
         total = q.count()
 
         items = (
-            q.order_by(ContentItem.scraped_time.desc())
+            q.order_by(
+                ContentItem.scraped_time.desc()
+            )
             .offset(offset)
             .limit(limit)
             .all()
@@ -120,18 +171,29 @@ def get_content(
 
         return {
             "total": total,
+            "offset": offset,
+            "limit": limit,
             "items": [
                 {
-                    "id": i.id,
-                    "competitor_name": i.competitor_name,
-                    "content_type": i.content_type or "Blog Post",
-                    "title": i.title,
-                    "url": i.url,
-                    "published_date": i.published_date,
-                    "topics": i.topics,
-                    "scraped_time": str(i.scraped_time),
+                    "id": item.id,
+                    "competitor_name": item.competitor_name,
+                    "content_type": (
+                        item.content_type
+                        or "Blog Post"
+                    ),
+                    "title": item.title,
+                    "url": item.url,
+                    "published_date": item.published_date,
+                    "topics": item.topics,
+                    "keywords": item.keywords,
+                    "summary": item.summary,
+                    "scraped_time": (
+                        str(item.scraped_time)
+                        if item.scraped_time
+                        else None
+                    ),
                 }
-                for i in items
+                for item in items
             ],
         }
 
@@ -139,65 +201,88 @@ def get_content(
         db.close()
 
 
-# ─── Stats ────────────────────────────────────────────────────────────────────
+# =============================================================================
+# STATISTICS
+# =============================================================================
 
 @app.get("/api/stats")
 def get_stats():
     db = SessionLocal()
 
     try:
-        comp_counts = (
+        competitor_counts = (
             db.query(
                 ContentItem.competitor_name,
                 func.count(ContentItem.id),
             )
-            .group_by(ContentItem.competitor_name)
-            .order_by(func.count(ContentItem.id).desc())
+            .group_by(
+                ContentItem.competitor_name
+            )
+            .order_by(
+                func.count(ContentItem.id).desc()
+            )
             .all()
         )
 
-        total = (
-            db.query(func.count(ContentItem.id))
+        total_articles = (
+            db.query(
+                func.count(ContentItem.id)
+            )
             .scalar()
         )
 
-        ctype_counts = (
+        content_type_counts = (
             db.query(
                 ContentItem.content_type,
                 func.count(ContentItem.id),
             )
-            .group_by(ContentItem.content_type)
+            .group_by(
+                ContentItem.content_type
+            )
             .all()
         )
 
         return {
-            "total_articles": total,
+            "total_articles": total_articles,
+
             "competitor_counts": [
                 {
-                    "competitor": c,
-                    "count": n,
+                    "competitor": competitor,
+                    "count": count,
                 }
-                for c, n in comp_counts
+                for competitor, count
+                in competitor_counts
             ],
+
             "content_type_counts": [
                 {
-                    "type": t or "Blog Post",
-                    "count": n,
+                    "type": content_type or "Blog Post",
+                    "count": count,
                 }
-                for t, n in ctype_counts
+                for content_type, count
+                in content_type_counts
             ],
-            "publishing_frequency": get_publishing_frequency(),
-            "content_type_breakdown": get_content_type_breakdown(),
+
+            "publishing_frequency": (
+                get_publishing_frequency()
+            ),
+
+            "content_type_breakdown": (
+                get_content_type_breakdown()
+            ),
         }
 
     finally:
         db.close()
 
 
-# ─── Topics ───────────────────────────────────────────────────────────────────
+# =============================================================================
+# TOPICS
+# =============================================================================
 
 @app.get("/api/topics")
 def get_topics():
+
     rows = load_titles()
 
     keyword_freq = get_keyword_freq(rows)
@@ -205,12 +290,14 @@ def get_topics():
     trigram_freq = get_trigram_freq(rows)
 
     return {
+
         "top_keywords": [
             {
                 "word": word,
                 "count": count,
             }
-            for word, count in list(keyword_freq.items())[:30]
+            for word, count
+            in list(keyword_freq.items())[:30]
         ],
 
         "top_bigrams": [
@@ -218,7 +305,8 @@ def get_topics():
                 "bigram": bigram,
                 "count": count,
             }
-            for bigram, count in list(bigram_freq.items())[:20]
+            for bigram, count
+            in list(bigram_freq.items())[:20]
         ],
 
         "top_trigrams": [
@@ -226,7 +314,8 @@ def get_topics():
                 "trigram": trigram,
                 "count": count,
             }
-            for trigram, count in list(trigram_freq.items())[:15]
+            for trigram, count
+            in list(trigram_freq.items())[:15]
         ],
 
         "competitor_keywords": {
@@ -243,12 +332,15 @@ def get_topics():
     }
 
 
-# ─── Opportunities ────────────────────────────────────────────────────────────
+# =============================================================================
+# OPPORTUNITIES
+# =============================================================================
 
 @app.get("/api/opportunities")
 def get_opportunities_endpoint():
 
     gaps = get_gaps()
+
     gap_analyses = get_gap_analyses()
 
     gap_score_map = {
@@ -259,21 +351,37 @@ def get_opportunities_endpoint():
     for analysis in gap_analyses:
 
         if not analysis.get("gap_score"):
-            analysis["gap_score"] = gap_score_map.get(
-                analysis.get("topic"),
-                "—",
+
+            analysis["gap_score"] = (
+                gap_score_map.get(
+                    analysis.get("topic"),
+                    "—",
+                )
             )
 
     return {
-        "executive_summary": get_executive_summary(),
+
+        "executive_summary": (
+            get_executive_summary()
+        ),
+
         "gaps": gaps,
+
         "gap_analyses": gap_analyses,
-        "recommendations": get_recommendations(),
-        "db_opportunities": get_opportunities_from_db(),
+
+        "recommendations": (
+            get_recommendations()
+        ),
+
+        "db_opportunities": (
+            get_opportunities_from_db()
+        ),
     }
 
 
-# ─── Existing Competitors ─────────────────────────────────────────────────────
+# =============================================================================
+# EXISTING COMPETITORS
+# =============================================================================
 
 @app.get("/api/competitors")
 def get_competitors():
@@ -283,7 +391,9 @@ def get_competitors():
     try:
 
         competitors = (
-            db.query(ContentItem.competitor_name)
+            db.query(
+                ContentItem.competitor_name
+            )
             .distinct()
             .all()
         )
@@ -300,12 +410,16 @@ def get_competitors():
         db.close()
 
 
-# ─── Phase 1: AI Analysis ─────────────────────────────────────────────────────
+# =============================================================================
+# GLOBAL AI ANALYSIS
+# =============================================================================
 
 def run_analysis_job():
 
     _scrape_status["running"] = True
-    _scrape_status["message"] = "Running AI analysis..."
+    _scrape_status["message"] = (
+        "Running AI analysis..."
+    )
     _scrape_status["stdout"] = ""
     _scrape_status["stderr"] = ""
     _scrape_status["returncode"] = None
@@ -315,17 +429,33 @@ def run_analysis_job():
         result = subprocess.run(
             [
                 sys.executable,
-                str(BASE_DIR / "analysis" / "ai.py"),
+                str(
+                    BASE_DIR
+                    / "analysis"
+                    / "ai.py"
+                ),
             ],
+
             capture_output=True,
+
             text=True,
+
             encoding="utf-8",
+
             cwd=str(BASE_DIR),
         )
 
-        _scrape_status["stdout"] = result.stdout or ""
-        _scrape_status["stderr"] = result.stderr or ""
-        _scrape_status["returncode"] = result.returncode
+        _scrape_status["stdout"] = (
+            result.stdout or ""
+        )
+
+        _scrape_status["stderr"] = (
+            result.stderr or ""
+        )
+
+        _scrape_status["returncode"] = (
+            result.returncode
+        )
 
         if result.returncode == 0:
 
@@ -340,12 +470,6 @@ def run_analysis_job():
                 f"{result.returncode}"
             )
 
-            if result.stderr:
-                print(
-                    "AI analysis stderr:",
-                    result.stderr,
-                )
-
     except Exception as e:
 
         _scrape_status["stderr"] = str(e)
@@ -358,8 +482,8 @@ def run_analysis_job():
 
         _scrape_status["running"] = False
 
-        _scrape_status["last_run"] = str(
-            datetime.now(timezone.utc)
+        _scrape_status["last_run"] = (
+            str(datetime.now(timezone.utc))
         )
 
 
@@ -372,7 +496,9 @@ def trigger_analysis(
 
         return {
             "status": "already_running",
-            "message": "Analysis already running",
+            "message": (
+                "Analysis already running"
+            ),
         }
 
     background_tasks.add_task(
@@ -393,14 +519,15 @@ def analysis_status():
     return _scrape_status
 
 
-# ─── Phase 2: Company Search ──────────────────────────────────────────────────
+# =============================================================================
+# COMPANY SEARCH
+# =============================================================================
 
 @app.get("/api/search-company")
 def search_company(q: str):
 
     """
-    Search for a company by name or URL
-    and return candidate websites.
+    Search for a company by name or URL.
     """
 
     q = q.strip()
@@ -409,11 +536,17 @@ def search_company(q: str):
 
         return {
             "type": "error",
-            "message": "Please enter a company name or website.",
+            "message": (
+                "Please enter a company name "
+                "or website."
+            ),
             "candidates": [],
         }
 
-    # User entered a URL or domain
+    # --------------------------------------------------
+    # User entered a URL/domain
+    # --------------------------------------------------
+
     if q.startswith("http") or (
         "." in q and " " not in q
     ):
@@ -430,7 +563,10 @@ def search_company(q: str):
             "candidates": [website],
         }
 
-    # User entered a company name
+    # --------------------------------------------------
+    # User entered company name
+    # --------------------------------------------------
+
     candidates = find_website(q)
 
     return {
@@ -440,7 +576,9 @@ def search_company(q: str):
     }
 
 
-# ─── Start Company Analysis ───────────────────────────────────────────────────
+# =============================================================================
+# START COMPANY ANALYSIS
+# =============================================================================
 
 @app.post("/api/analyze-company")
 def analyze_company(
@@ -450,42 +588,75 @@ def analyze_company(
 ):
 
     """
-    Confirm the company website and start
-    the scraping + AI analysis pipeline.
+    Start real-time company intelligence pipeline.
+
+    Pipeline:
+
+    Company
+        ↓
+    Website
+        ↓
+    Scraping
+        ↓
+    Content extraction
+        ↓
+    Database
+        ↓
+    AI analysis
+        ↓
+    Intelligence result
     """
 
     company_name = company_name.strip()
     website = website.strip()
 
+    # --------------------------------------------------
+    # Validation
+    # --------------------------------------------------
+
     if not company_name:
 
         return {
             "status": "error",
-            "message": "Company name is required.",
+            "message": (
+                "Company name is required."
+            ),
         }
 
     if not website:
 
         return {
             "status": "error",
-            "message": "Website is required.",
+            "message": (
+                "Website is required."
+            ),
         }
 
-    # Prevent duplicate analysis
-    if _company_status.get(
-        company_name,
-        {},
-    ).get("running"):
+    # --------------------------------------------------
+    # Prevent duplicate running analysis
+    # --------------------------------------------------
+
+    current_status = (
+        _company_status.get(
+            company_name,
+            {},
+        )
+    )
+
+    if current_status.get("running"):
 
         return {
             "status": "already_running",
             "message": (
                 f"{company_name} analysis "
-                f"is already running."
+                "is already running."
             ),
         }
 
-    # Check database cache
+    # --------------------------------------------------
+    # Check database
+    # --------------------------------------------------
+
     db = SessionLocal()
 
     try:
@@ -499,28 +670,65 @@ def analyze_company(
         )
 
     finally:
+
         db.close()
 
-    # Company already analysed
+    # --------------------------------------------------
+    # Existing company
+    #
+    # IMPORTANT:
+    # We currently return cached data.
+    # Later we will add a "refresh" option.
+    # --------------------------------------------------
+
     if existing:
 
         return {
             "status": "cached",
             "message": (
-                f"{company_name} has already been "
-                f"analysed."
+                f"{company_name} has already "
+                "been analysed."
             ),
             "company": company_name,
         }
 
-    # Set initial status
+    # --------------------------------------------------
+    # Initialize status
+    # --------------------------------------------------
+
     _company_status[company_name] = {
+
         "running": True,
-        "message": "Starting analysis...",
+
+        "stage": "starting",
+
+        "message": (
+            "Starting company analysis..."
+        ),
+
+        "progress": 0,
+
         "article_count": 0,
+
+        "pages_discovered": 0,
+
+        "pages_scanned": 0,
+
+        "articles_found": 0,
+
+        "error": None,
+
+        "started_at": (
+            str(datetime.now(timezone.utc))
+        ),
+
+        "completed_at": None,
     }
 
+    # --------------------------------------------------
     # Start background pipeline
+    # --------------------------------------------------
+
     background_tasks.add_task(
         run_company_pipeline,
         company_name,
@@ -528,36 +736,65 @@ def analyze_company(
     )
 
     return {
+
         "status": "started",
+
         "message": (
             f"Analysing {company_name}..."
         ),
+
         "company": company_name,
     }
 
 
-# ─── Company Analysis Status ──────────────────────────────────────────────────
+# =============================================================================
+# COMPANY ANALYSIS STATUS
+# =============================================================================
 
-@app.get("/api/analyze-company/status/{company_name}")
+@app.get(
+    "/api/analyze-company/status/{company_name}"
+)
 def company_analysis_status(
     company_name: str,
 ):
 
     """
-    Check the current status of a company's analysis.
+    Return live status of a company analysis.
     """
 
-    return _company_status.get(
-        company_name,
-        {
-            "running": False,
-            "message": "Not started",
-            "article_count": 0,
-        },
+    status = _company_status.get(
+        company_name
     )
 
+    if status:
 
-# ─── Get Single Company ───────────────────────────────────────────────────────
+        return status
+
+    return {
+
+        "running": False,
+
+        "stage": "not_started",
+
+        "message": "Not started",
+
+        "progress": 0,
+
+        "article_count": 0,
+
+        "pages_discovered": 0,
+
+        "pages_scanned": 0,
+
+        "articles_found": 0,
+
+        "error": None,
+    }
+
+
+# =============================================================================
+# GET SINGLE COMPANY
+# =============================================================================
 
 @app.get("/api/company/{company_name}")
 def get_company(
@@ -565,8 +802,7 @@ def get_company(
 ):
 
     """
-    Get the complete analysis results
-    for a company.
+    Get complete analysis results for a company.
     """
 
     db = SessionLocal()
@@ -608,7 +844,57 @@ def get_company(
 
             "website": company.website,
 
-            "ai_summary": company.ai_summary,
+            "description": (
+                getattr(
+                    company,
+                    "description",
+                    None,
+                )
+            ),
+
+            "industry": (
+                getattr(
+                    company,
+                    "industry",
+                    None,
+                )
+            ),
+
+            "ai_summary": (
+                company.ai_summary
+            ),
+
+            "scrape_status": (
+                getattr(
+                    company,
+                    "scrape_status",
+                    None,
+                )
+            ),
+
+            "pages_discovered": (
+                getattr(
+                    company,
+                    "pages_discovered",
+                    0,
+                )
+            ),
+
+            "pages_scanned": (
+                getattr(
+                    company,
+                    "pages_scanned",
+                    0,
+                )
+            ),
+
+            "articles_found": (
+                getattr(
+                    company,
+                    "articles_found",
+                    len(articles),
+                )
+            ),
 
             "last_scraped": (
                 str(company.last_scraped)
@@ -621,36 +907,43 @@ def get_company(
             "articles": [
 
                 {
+                    "id": article.id,
+
                     "title": article.title,
+
                     "url": article.url,
+
                     "content_type": (
                         article.content_type
                         or "Blog Post"
                     ),
+
                     "published_date": (
                         article.published_date
                     ),
+
                     "topics": article.topics,
+
+                    "keywords": article.keywords,
+
+                    "summary": article.summary,
                 }
 
-                for article in articles[:50]
-
+                for article in articles[:100]
             ],
         }
 
     finally:
+
         db.close()
 
 
-# ─── Get All Analysed Companies ───────────────────────────────────────────────
+# =============================================================================
+# ALL ANALYSED COMPANIES
+# =============================================================================
 
 @app.get("/api/companies")
 def get_all_companies():
-
-    """
-    List all companies
-    that have already been analysed.
-    """
 
     db = SessionLocal()
 
@@ -673,23 +966,59 @@ def get_all_companies():
 
                     "website": company.website,
 
+                    "description": (
+                        getattr(
+                            company,
+                            "description",
+                            None,
+                        )
+                    ),
+
+                    "industry": (
+                        getattr(
+                            company,
+                            "industry",
+                            None,
+                        )
+                    ),
+
+                    "scrape_status": (
+                        getattr(
+                            company,
+                            "scrape_status",
+                            None,
+                        )
+                    ),
+
+                    "articles_found": (
+                        getattr(
+                            company,
+                            "articles_found",
+                            0,
+                        )
+                    ),
+
                     "last_scraped": (
-                        str(company.last_scraped)
+                        str(
+                            company.last_scraped
+                        )
                         if company.last_scraped
                         else None
                     ),
                 }
 
                 for company in companies
-
             ]
         }
 
     finally:
+
         db.close()
 
 
-# ─── Background Company Pipeline ──────────────────────────────────────────────
+# =============================================================================
+# BACKGROUND COMPANY PIPELINE
+# =============================================================================
 
 def run_company_pipeline(
     company_name: str,
@@ -698,43 +1027,171 @@ def run_company_pipeline(
 
     try:
 
-        # ── Step 1: Scrape ───────────────────────────────────────────────
+        # ==============================================================
+        # STEP 1 — SCRAPE WEBSITE
+        # ==============================================================
 
-        _company_status[company_name] = {
-            "running": True,
-            "message": "Scraping articles...",
-            "article_count": 0,
-        }
+        _company_status[company_name].update({
 
-        articles = scrape_articles(website)
+            "stage": "scraping",
 
-        # Handle scraper returning None
+            "message": (
+                "Discovering website pages..."
+            ),
+
+            "progress": 10,
+        })
+
+        scrape_result = scrape_articles(
+            website
+        )
+
+        # --------------------------------------------------------------
+        # Normalize scraper output
+        #
+        # Expected:
+        #
+        # {
+        #     "articles": [...],
+        #     "pages_discovered": 98,
+        #     "pages_scanned": 20,
+        #     ...
+        # }
+        #
+        # --------------------------------------------------------------
+
+        if scrape_result is None:
+
+            scrape_result = {}
+
+        # --------------------------------------------------------------
+        # Backwards compatibility:
+        #
+        # If scraper still returns a plain list,
+        # accept it.
+        # --------------------------------------------------------------
+
+        if isinstance(
+            scrape_result,
+            list,
+        ):
+
+            articles = scrape_result
+
+            scrape_result = {
+                "articles": articles
+            }
+
+        else:
+
+            articles = (
+                scrape_result.get(
+                    "articles",
+                    [],
+                )
+            )
+
         if articles is None:
+
             articles = []
 
-        # ── Step 2: Check if articles were found ─────────────────────────
+        # --------------------------------------------------------------
+        # Extract scraper statistics
+        # --------------------------------------------------------------
+
+        pages_discovered = (
+            scrape_result.get(
+                "pages_discovered",
+                0,
+            )
+        )
+
+        pages_scanned = (
+            scrape_result.get(
+                "pages_scanned",
+                0,
+            )
+        )
+
+        articles_found = len(articles)
+
+        # --------------------------------------------------------------
+        # Update live status
+        # --------------------------------------------------------------
+
+        _company_status[company_name].update({
+
+            "stage": "scraping_complete",
+
+            "message": (
+                f"Scraping complete. "
+                f"Found {articles_found} resources."
+            ),
+
+            "progress": 45,
+
+            "pages_discovered": (
+                pages_discovered
+            ),
+
+            "pages_scanned": (
+                pages_scanned
+            ),
+
+            "articles_found": (
+                articles_found
+            ),
+
+            "article_count": (
+                articles_found
+            ),
+        })
+
+        # ==============================================================
+        # STEP 2 — CHECK RESULTS
+        # ==============================================================
 
         if not articles:
 
-            _company_status[company_name] = {
+            _company_status[company_name].update({
+
                 "running": False,
+
+                "stage": "completed",
+
                 "message": (
-                    "No articles found on this website."
+                    "No articles/resources "
+                    "were found on this website."
                 ),
-                "article_count": 0,
-            }
+
+                "progress": 100,
+
+                "completed_at": (
+                    str(
+                        datetime.now(
+                            timezone.utc
+                        )
+                    )
+                ),
+            })
 
             return
 
-        # ── Step 3: Save Articles ────────────────────────────────────────
+        # ==============================================================
+        # STEP 3 — SAVE DATA
+        # ==============================================================
 
-        _company_status[company_name] = {
-            "running": True,
+        _company_status[company_name].update({
+
+            "stage": "saving",
+
             "message": (
-                f"Saving {len(articles)} articles..."
+                f"Saving {len(articles)} "
+                "resources to database..."
             ),
-            "article_count": len(articles),
-        }
+
+            "progress": 55,
+        })
 
         save_company_data(
             company_name,
@@ -742,20 +1199,40 @@ def run_company_pipeline(
             articles,
         )
 
-        # ── Step 4: Generate AI Summary ─────────────────────────────────
+        # ==============================================================
+        # STEP 4 — AI ANALYSIS
+        # ==============================================================
 
-        _company_status[company_name] = {
-            "running": True,
-            "message": "Generating AI summary...",
-            "article_count": len(articles),
-        }
+        _company_status[company_name].update({
+
+            "stage": "ai_analysis",
+
+            "message": (
+                "Generating competitor intelligence..."
+            ),
+
+            "progress": 70,
+        })
 
         summary = generate_competitor_summary(
             company_name,
             articles,
         )
 
-        # ── Step 5: Save AI Summary ─────────────────────────────────────
+        # ==============================================================
+        # STEP 5 — SAVE AI RESULTS
+        # ==============================================================
+
+        _company_status[company_name].update({
+
+            "stage": "finalizing",
+
+            "message": (
+                "Saving intelligence results..."
+            ),
+
+            "progress": 90,
+        })
 
         db = SessionLocal()
 
@@ -764,7 +1241,8 @@ def run_company_pipeline(
             company = (
                 db.query(Company)
                 .filter(
-                    Company.name == company_name
+                    Company.name
+                    == company_name
                 )
                 .first()
             )
@@ -772,6 +1250,55 @@ def run_company_pipeline(
             if company:
 
                 company.ai_summary = summary
+
+                # ------------------------------------------------------
+                # Save scraper statistics if the columns exist
+                # ------------------------------------------------------
+
+                if hasattr(
+                    company,
+                    "pages_discovered",
+                ):
+
+                    company.pages_discovered = (
+                        pages_discovered
+                    )
+
+                if hasattr(
+                    company,
+                    "pages_scanned",
+                ):
+
+                    company.pages_scanned = (
+                        pages_scanned
+                    )
+
+                if hasattr(
+                    company,
+                    "articles_found",
+                ):
+
+                    company.articles_found = (
+                        articles_found
+                    )
+
+                if hasattr(
+                    company,
+                    "scrape_status",
+                ):
+
+                    company.scrape_status = (
+                        "completed"
+                    )
+
+                if hasattr(
+                    company,
+                    "updated_at",
+                ):
+
+                    company.updated_at = (
+                        datetime.utcnow()
+                    )
 
                 db.commit()
 
@@ -785,31 +1312,88 @@ def run_company_pipeline(
 
             db.close()
 
-        # ── Step 6: Complete ─────────────────────────────────────────────
+        # ==============================================================
+        # STEP 6 — COMPLETE
+        # ==============================================================
 
-        _company_status[company_name] = {
+        _company_status[company_name].update({
+
             "running": False,
-            "message": "Analysis complete!",
-            "article_count": len(articles),
-        }
+
+            "stage": "completed",
+
+            "message": (
+                "Company intelligence analysis complete!"
+            ),
+
+            "progress": 100,
+
+            "article_count": (
+                len(articles)
+            ),
+
+            "pages_discovered": (
+                pages_discovered
+            ),
+
+            "pages_scanned": (
+                pages_scanned
+            ),
+
+            "articles_found": (
+                articles_found
+            ),
+
+            "completed_at": (
+                str(
+                    datetime.now(
+                        timezone.utc
+                    )
+                )
+            ),
+        })
+
+    # =========================================================================
+    # ERROR HANDLING
+    # =========================================================================
 
     except Exception as e:
 
+        error_message = str(e)
+
         print(
-            f"Company analysis error for "
-            f"{company_name}: {str(e)}"
+            f"\nCompany analysis error "
+            f"for {company_name}: "
+            f"{error_message}\n"
         )
 
-        _company_status[company_name] = {
+        _company_status[company_name].update({
+
             "running": False,
+
+            "stage": "failed",
+
             "message": (
-                f"Error: {str(e)}"
+                "Company analysis failed."
             ),
-            "article_count": 0,
-        }
+
+            "progress": 0,
+
+            "error": error_message,
+
+            "completed_at": (
+                str(
+                    datetime.now(
+                        timezone.utc
+                    )
+                )
+            ),
+        })
 
 
-# ─── Run Server ───────────────────────────────────────────────────────────────
+# =============================================================================
+# SERVER
+# =============================================================================
 
 if __name__ == "__main__":
 

@@ -1,339 +1,1464 @@
-import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+import asyncio
+import json
 import re
+from datetime import datetime
+from urllib.parse import urljoin, urlparse, urldefrag
+
+from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 
 
-headers = {
-    "User-Agent": "Mozilla/5.0"
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+ARTICLE_PATH_KEYWORDS = [
+    "blog",
+    "blogs",
+    "article",
+    "articles",
+    "news",
+    "insight",
+    "insights",
+    "resource",
+    "resources",
+    "whitepaper",
+    "whitepapers",
+    "case-study",
+    "case-studies",
+    "webinar",
+    "press-release",
+    "press-releases",
+    "knowledge",
+    "stories",
+    "post",
+    "posts",
+]
+
+CONTENT_TYPE_RULES = {
+    "Case Study": [
+        "case-study",
+        "case_study",
+        "case study",
+        "casestudy",
+    ],
+    "Whitepaper": [
+        "whitepaper",
+        "white-paper",
+        "white paper",
+    ],
+    "Webinar": [
+        "webinar",
+        "webinars",
+    ],
+    "Press Release": [
+        "press-release",
+        "press-releases",
+        "press release",
+        "pressroom",
+        "newsroom",
+    ],
+    "News": [
+        "/news/",
+        "/news",
+    ],
+    "Resource": [
+        "resource",
+        "resources",
+    ],
+    "Insight": [
+        "insight",
+        "insights",
+    ],
+}
+
+SOCIAL_DOMAINS = {
+    "linkedin.com": "linkedin",
+    "twitter.com": "twitter",
+    "x.com": "x",
+    "youtube.com": "youtube",
+    "instagram.com": "instagram",
+    "facebook.com": "facebook",
 }
 
 
-def extract_date(soup):
+# ============================================================
+# URL HELPERS
+# ============================================================
 
-    # Try <time> tags first
-    time_tag = soup.find("time")
-
-    if time_tag:
-
-        if time_tag.get("datetime"):
-            return time_tag.get("datetime")
-
-        text = time_tag.get_text(strip=True)
-
-        if text:
-            return text
-
-    # Search page text for common date formats
-    text = soup.get_text(" ", strip=True)
-
-    date_pattern = r"""
-        \b
-        (?:
-            Jan(?:uary)?|
-            Feb(?:ruary)?|
-            Mar(?:ch)?|
-            Apr(?:il)?|
-            May|
-            Jun(?:e)?|
-            Jul(?:y)?|
-            Aug(?:ust)?|
-            Sep(?:tember)?|
-            Oct(?:ober)?|
-            Nov(?:ember)?|
-            Dec(?:ember)?
-        )
-        \s+
-        \d{1,2},
-        \s+
-        \d{4}
-        \b
+def normalize_url(url):
+    """
+    Normalize URLs to make duplicate detection easier.
     """
 
-    match = re.search(
-        date_pattern,
-        text,
-        re.IGNORECASE | re.VERBOSE
+    if not url:
+        return None
+
+    url = url.strip()
+
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    # Remove fragments
+    url, _ = urldefrag(url)
+
+    parsed = urlparse(url)
+
+    if not parsed.netloc:
+        return None
+
+    scheme = parsed.scheme.lower()
+    domain = parsed.netloc.lower()
+
+    # Remove default ports
+    domain = domain.replace(":80", "").replace(":443", "")
+
+    path = parsed.path or "/"
+
+    # Remove trailing slash except homepage
+    if path != "/":
+        path = path.rstrip("/")
+
+    clean = f"{scheme}://{domain}{path}"
+
+    # Preserve useful query parameters only when necessary.
+    # For scraping we generally don't want tracking parameters.
+    return clean
+
+
+def same_domain(base_url, target_url):
+    """
+    Check whether target URL belongs to the same domain.
+    """
+
+    if not base_url or not target_url:
+        return False
+
+    base_domain = (
+        urlparse(base_url)
+        .netloc
+        .lower()
+        .replace("www.", "")
     )
 
-    if match:
-        return match.group()
+    target_domain = (
+        urlparse(target_url)
+        .netloc
+        .lower()
+        .replace("www.", "")
+    )
+
+    return base_domain == target_domain
+
+
+def is_valid_http_url(url):
+    """
+    Check whether URL is a normal HTTP/HTTPS URL.
+    """
+
+    if not url:
+        return False
+
+    parsed = urlparse(url)
+
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def is_asset_url(url):
+    """
+    Ignore images, videos, documents and static assets.
+    """
+
+    path = urlparse(url).path.lower()
+
+    ignored_extensions = (
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".svg",
+        ".ico",
+        ".css",
+        ".js",
+        ".json",
+        ".xml",
+        ".zip",
+        ".mp4",
+        ".mp3",
+        ".wav",
+        ".avi",
+        ".mov",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+    )
+
+    return path.endswith(ignored_extensions)
+
+
+# ============================================================
+# ARTICLE DETECTION
+# ============================================================
+
+def looks_like_article_url(url):
+    """
+    Determine whether a URL looks like an article/resource page.
+    """
+
+    if not url:
+        return False
+
+    path = urlparse(url).path.lower()
+
+    # Strong article/resource signals
+    for keyword in ARTICLE_PATH_KEYWORDS:
+
+        if keyword in path:
+            return True
+
+    # Date-based URLs:
+    # /2026/08/article-name
+    # /2025/12/15/article-name
+    if re.search(r"/20\d{2}/\d{1,2}/", path):
+        return True
+
+    # Avoid obvious non-content pages
+    ignored_paths = [
+        "/about",
+        "/contact",
+        "/careers",
+        "/career",
+        "/login",
+        "/signup",
+        "/sign-up",
+        "/privacy",
+        "/terms",
+        "/pricing",
+        "/products",
+        "/product",
+        "/solutions",
+        "/services",
+        "/demo",
+    ]
+
+    if any(path.rstrip("/").endswith(p) for p in ignored_paths):
+        return False
+
+    return False
+
+
+def score_article_url(url):
+    """
+    Give a URL an article-likelihood score.
+
+    Higher score = more likely to be an article.
+    """
+
+    if not url:
+        return 0
+
+    path = urlparse(url).path.lower()
+
+    score = 0
+
+    strong_keywords = [
+        "blog",
+        "article",
+        "insight",
+        "case-study",
+        "whitepaper",
+        "webinar",
+        "press-release",
+        "news",
+    ]
+
+    medium_keywords = [
+        "resource",
+        "knowledge",
+        "story",
+        "stories",
+        "post",
+    ]
+
+    for keyword in strong_keywords:
+        if keyword in path:
+            score += 5
+
+    for keyword in medium_keywords:
+        if keyword in path:
+            score += 3
+
+    # Date URL
+    if re.search(r"/20\d{2}/\d{1,2}/", path):
+        score += 4
+
+    # More path segments usually means deeper content page
+    segments = [
+        x for x in path.split("/")
+        if x
+    ]
+
+    if len(segments) >= 2:
+        score += 1
+
+    if len(segments) >= 3:
+        score += 1
+
+    return score
+
+
+# ============================================================
+# CONTENT TYPE
+# ============================================================
+
+def guess_content_type(url, title=""):
+    """
+    Guess content type using URL and title.
+    """
+
+    value = f"{url} {title}".lower()
+
+    for content_type, keywords in CONTENT_TYPE_RULES.items():
+
+        for keyword in keywords:
+
+            if keyword in value:
+                return content_type
+
+    return "Blog"
+
+
+# ============================================================
+# PAGE FETCHING
+# ============================================================
+
+async def fetch_page(page, url):
+    """
+    Open a page with Playwright and return HTML.
+    """
+
+    try:
+
+        response = await page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+
+        if not response:
+            return None
+
+        # Give JavaScript-rendered content some time
+        try:
+            await page.wait_for_load_state(
+                "networkidle",
+                timeout=5000,
+            )
+        except Exception:
+            pass
+
+        await page.wait_for_timeout(1000)
+
+        return await page.content()
+
+    except Exception as e:
+
+        print(f"[WARN] Failed to fetch: {url}")
+        print(f"       {e}")
+
+        return None
+
+
+# ============================================================
+# LINK EXTRACTION
+# ============================================================
+
+def extract_links(base_url, html):
+    """
+    Extract internal links from a page.
+    """
+
+    soup = BeautifulSoup(
+        html,
+        "html.parser",
+    )
+
+    links = set()
+
+    for anchor in soup.find_all("a", href=True):
+
+        href = anchor.get("href")
+
+        if not href:
+            continue
+
+        href = href.strip()
+
+        if href.startswith(
+            (
+                "#",
+                "mailto:",
+                "tel:",
+                "javascript:",
+                "data:",
+            )
+        ):
+            continue
+
+        full_url = urljoin(
+            base_url,
+            href,
+        )
+
+        full_url = normalize_url(
+            full_url
+        )
+
+        if not full_url:
+            continue
+
+        if not is_valid_http_url(full_url):
+            continue
+
+        if not same_domain(
+            base_url,
+            full_url,
+        ):
+            continue
+
+        if is_asset_url(full_url):
+            continue
+
+        links.add(full_url)
+
+    return links
+
+
+# ============================================================
+# SOCIAL LINKS
+# ============================================================
+
+def extract_social_links(html):
+    """
+    Extract public social media profiles.
+    """
+
+    soup = BeautifulSoup(
+        html,
+        "html.parser",
+    )
+
+    results = {}
+
+    for anchor in soup.find_all(
+        "a",
+        href=True,
+    ):
+
+        href = anchor.get("href")
+
+        if not href:
+            continue
+
+        href_lower = href.lower()
+
+        for domain, platform in SOCIAL_DOMAINS.items():
+
+            if domain in href_lower:
+
+                # Don't save tracking duplicates
+                if platform not in results:
+                    results[platform] = href
+
+    return results
+
+
+# ============================================================
+# COMPANY DESCRIPTION
+# ============================================================
+
+def extract_description(html):
+    """
+    Extract a basic company/page description.
+    """
+
+    soup = BeautifulSoup(
+        html,
+        "html.parser",
+    )
+
+    # OpenGraph description
+    meta = soup.find(
+        "meta",
+        attrs={"property": "og:description"},
+    )
+
+    if meta and meta.get("content"):
+        return meta["content"].strip()
+
+    # Standard meta description
+    meta = soup.find(
+        "meta",
+        attrs={"name": "description"},
+    )
+
+    if meta and meta.get("content"):
+        return meta["content"].strip()
+
+    # First meaningful paragraph
+    paragraphs = soup.find_all("p")
+
+    for paragraph in paragraphs:
+
+        text = paragraph.get_text(
+            " ",
+            strip=True,
+        )
+
+        if len(text) >= 80:
+            return text[:500]
 
     return None
 
 
-def scrape_article_page(article_url):
+# ============================================================
+# DATE EXTRACTION
+# ============================================================
 
-    try:
+def clean_date(value):
+    """
+    Clean and normalize date text.
+    """
 
-        response = requests.get(
-            article_url,
-            headers=headers,
-            timeout=10
-        )
-
-        if response.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
-
-        # Try to find the article title
-        title_tag = soup.find("h1")
-
-        if title_tag:
-            title = title_tag.get_text(
-                " ",
-                strip=True
-            )
-        else:
-            title = None
-
-        # Extract date
-        date = extract_date(soup)
-
-        # Get article text
-        paragraphs = soup.find_all("p")
-
-        content = " ".join(
-            p.get_text(
-                " ",
-                strip=True
-            )
-            for p in paragraphs
-        )
-
-        # Remove pages with almost no content
-        if not content or len(content) < 200:
-            return None
-
-        return {
-            "title": title,
-            "url": article_url,
-            "date": date,
-            "content": content[:5000]
-        }
-
-    except Exception as e:
-
-        print(f"Error scraping article: {article_url}")
-
+    if not value:
         return None
 
-def scrape_articles(website):
+    value = str(value).strip()
 
-    article_urls = []
+    if not value:
+        return None
 
-    paths = [
-        "/blog",
-        "/blogs",
-        "/resources",
-        "/insights",
-        "/news",
-        "/press"
-    ]
+    return value[:100]
 
-    website = website.rstrip("/")
 
-    print(f"\nSearching for content on: {website}")
+def extract_date_from_jsonld(soup):
+    """
+    Look for article dates inside JSON-LD structured data.
+    """
 
-    for path in paths:
+    scripts = soup.find_all(
+        "script",
+        type="application/ld+json",
+    )
 
-        page_url = website + path
+    for script in scripts:
 
         try:
 
-            print(f"Checking: {page_url}")
+            raw = script.string
 
-            response = requests.get(
-                page_url,
-                headers=headers,
-                timeout=10
-            )
-
-            if response.status_code != 200:
-
-                print(
-                    f"Not found: {response.status_code}"
-                )
-
+            if not raw:
                 continue
 
-            soup = BeautifulSoup(
-                response.text,
-                "html.parser"
+            data = json.loads(raw)
+
+            objects = []
+
+            if isinstance(data, dict):
+                objects.append(data)
+
+                if "@graph" in data and isinstance(
+                    data["@graph"],
+                    list,
+                ):
+                    objects.extend(
+                        data["@graph"]
+                    )
+
+            elif isinstance(data, list):
+                objects.extend(data)
+
+            for item in objects:
+
+                if not isinstance(item, dict):
+                    continue
+
+                for field in (
+                    "datePublished",
+                    "dateCreated",
+                    "dateModified",
+                ):
+
+                    if item.get(field):
+                        return clean_date(
+                            item[field]
+                        )
+
+        except Exception:
+            continue
+
+    return None
+
+
+def extract_date(soup):
+    """
+    Extract publication date using multiple strategies.
+    """
+
+    # 1. <time>
+    time_tags = soup.find_all("time")
+
+    for tag in time_tags:
+
+        value = (
+            tag.get("datetime")
+            or tag.get_text(
+                " ",
+                strip=True,
+            )
+        )
+
+        if value:
+            return clean_date(value)
+
+    # 2. JSON-LD
+    date = extract_date_from_jsonld(
+        soup
+    )
+
+    if date:
+        return date
+
+    # 3. Meta tags
+    meta_names = [
+        "article:published_time",
+        "date",
+        "publish-date",
+        "datePublished",
+        "publication_date",
+    ]
+
+    for name in meta_names:
+
+        tag = soup.find(
+            "meta",
+            attrs={"name": name},
+        )
+
+        if tag and tag.get("content"):
+            return clean_date(
+                tag["content"]
             )
 
-            links = soup.find_all(
-                "a",
-                href=True
+    # OpenGraph
+    og_tag = soup.find(
+        "meta",
+        attrs={"property": "article:published_time"},
+    )
+
+    if og_tag and og_tag.get("content"):
+        return clean_date(
+            og_tag["content"]
+        )
+
+    # 4. Search visible text
+    text = soup.get_text(
+        " ",
+        strip=True,
+    )
+
+    date_patterns = [
+        # 2026-08-20
+        r"\b20\d{2}-\d{1,2}-\d{1,2}\b",
+
+        # 20/08/2026
+        r"\b\d{1,2}[/-]\d{1,2}[/-]20\d{2}\b",
+
+        # August 20, 2026
+        r"\b(?:January|February|March|April|May|June|July|August|"
+        r"September|October|November|December)"
+        r"\s+\d{1,2},\s+20\d{2}\b",
+
+        # 20 August 2026
+        r"\b\d{1,2}\s+(?:January|February|March|April|May|June|"
+        r"July|August|September|October|November|December)"
+        r"\s+20\d{2}\b",
+    ]
+
+    for pattern in date_patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE,
+        )
+
+        if match:
+            return clean_date(
+                match.group()
             )
 
-            found_on_page = 0
+    return None
 
-            for link in links:
 
-                href = link.get("href")
+# ============================================================
+# ARTICLE EXTRACTION
+# ============================================================
 
-                article_url = urljoin(
-                    page_url,
-                    href
-                )
+def extract_article(html, url):
+    """
+    Extract article metadata from a page.
 
-                # Ignore external websites
+    Returns None if the page doesn't look like a useful
+    content page.
+    """
+
+    soup = BeautifulSoup(
+        html,
+        "html.parser",
+    )
+
+    # --------------------------------------------------------
+    # TITLE
+    # --------------------------------------------------------
+
+    title = None
+
+    h1 = soup.find("h1")
+
+    if h1:
+
+        title = h1.get_text(
+            " ",
+            strip=True,
+        )
+
+    # OpenGraph title
+    if not title:
+
+        og_title = soup.find(
+            "meta",
+            attrs={"property": "og:title"},
+        )
+
+        if og_title:
+            title = og_title.get(
+                "content"
+            )
+
+    # Page title
+    if not title and soup.title:
+
+        title = soup.title.get_text(
+            " ",
+            strip=True,
+        )
+
+    if not title:
+        return None
+
+    title = re.sub(
+        r"\s+",
+        " ",
+        title,
+    ).strip()
+
+    # Ignore extremely short titles
+    if len(title) < 5:
+        return None
+
+    # --------------------------------------------------------
+    # DESCRIPTION
+    # --------------------------------------------------------
+
+    description = extract_description(
+        html
+    )
+
+    # --------------------------------------------------------
+    # DATE
+    # --------------------------------------------------------
+
+    published_date = extract_date(
+        soup
+    )
+
+    # --------------------------------------------------------
+    # CONTENT TYPE
+    # --------------------------------------------------------
+
+    content_type = guess_content_type(
+        url,
+        title,
+    )
+
+    # --------------------------------------------------------
+    # ARTICLE SCORE
+    # --------------------------------------------------------
+
+    article_score = score_article_url(
+        url
+    )
+
+    return {
+        "title": title,
+        "url": url,
+        "published_date": published_date,
+        "content_type": content_type,
+        "description": description,
+        "article_score": article_score,
+    }
+
+
+# ============================================================
+# SITEMAP DISCOVERY
+# ============================================================
+
+async def discover_sitemaps(page, website):
+    """
+    Try common sitemap locations.
+    """
+
+    parsed = urlparse(website)
+
+    root = (
+        f"{parsed.scheme}://{parsed.netloc}"
+    )
+
+    candidates = [
+        f"{root}/sitemap.xml",
+        f"{root}/sitemap_index.xml",
+        f"{root}/sitemap-index.xml",
+        f"{root}/post-sitemap.xml",
+        f"{root}/blog-sitemap.xml",
+    ]
+
+    found = []
+
+    for sitemap_url in candidates:
+
+        try:
+
+            response = await page.goto(
+                sitemap_url,
+                wait_until="domcontentloaded",
+                timeout=10000,
+            )
+
+            if response and response.ok:
+
+                content = await page.content()
+
                 if (
-                    urlparse(article_url).netloc
-                    !=
-                    urlparse(website).netloc
+                    "<urlset" in content.lower()
+                    or "<sitemapindex" in content.lower()
+                ):
+
+                    found.append(
+                        sitemap_url
+                    )
+
+        except Exception:
+            continue
+
+    return found
+
+
+async def extract_sitemap_urls(
+    page,
+    sitemap_urls,
+    base_url,
+    max_urls=200,
+):
+    """
+    Extract URLs from sitemap files.
+    """
+
+    results = set()
+
+    for sitemap_url in sitemap_urls:
+
+        try:
+
+            response = await page.goto(
+                sitemap_url,
+                wait_until="domcontentloaded",
+                timeout=15000,
+            )
+
+            if not response:
+                continue
+
+            text = await page.locator(
+                "body"
+            ).inner_text()
+
+            # XML is sometimes rendered as text
+            urls = re.findall(
+                r"https?://[^\s<>\"']+",
+                text,
+            )
+
+            for url in urls:
+
+                url = normalize_url(url)
+
+                if not url:
+                    continue
+
+                if not same_domain(
+                    base_url,
+                    url,
                 ):
                     continue
 
-                # Remove # fragments
-                article_url = article_url.split("#")[0]
-
-                # Ignore the listing page itself
-                if article_url.rstrip("/") == page_url.rstrip("/"):
+                if is_asset_url(url):
                     continue
 
-                # IMPORTANT:
-                # Only accept URLs related to the
-                # content section currently being scraped
+                results.add(url)
 
-                valid_paths = [
-                    "/blog/",
-                    "/blogs/",
-                    "/resources/",
-                    "/insights/",
-                    "/news/",
-                    "/press/"
-                ]
+                if len(results) >= max_urls:
+                    return results
 
-                parsed_url = urlparse(article_url)
+        except Exception:
+            continue
 
-                if not any(
-                    content_path in parsed_url.path
-                    for content_path in valid_paths
-                ):
-                    continue
+    return results
 
-                # Get link text
-                title = link.get_text(
-                    " ",
-                    strip=True
-                )
 
-                # Skip empty links
-                if not title:
-                    continue
+# ============================================================
+# CONCURRENT ARTICLE SCRAPING
+# ============================================================
 
-                # Skip very short links
-                if len(title) < 15:
-                    continue
+async def scrape_article(
+    context,
+    url,
+    index,
+    total,
+):
+    """
+    Scrape a single article page.
+    """
 
-                skip_words = [
-                    "contact",
-                    "login",
-                    "sign up",
-                    "privacy",
-                    "terms",
-                    "cookie",
-                    "home",
-                    "about",
-                    "careers",
-                    "products",
-                    "solutions",
-                    "read more",
-                    "learn more",
-                    "view all",
-                    "explore"
-                ]
+    page = await context.new_page()
 
-                if title.lower() in skip_words:
-                    continue
-
-                # Avoid duplicates
-                if article_url in article_urls:
-                    continue
-
-                article_urls.append(
-                    article_url
-                )
-
-                found_on_page += 1
-
-            print(
-                f"Found {found_on_page} possible article URLs"
-            )
-
-        except Exception as e:
-
-            print(
-                f"Error scraping {page_url}: {e}"
-            )
-
-    print(
-        f"\nFound {len(article_urls)} unique article URLs."
-    )
-
-    print(
-        "\nNow visiting each article page...\n"
-    )
-
-    articles = []
-
-    for index, article_url in enumerate(
-        article_urls,
-        start=1
-    ):
+    try:
 
         print(
-            f"[{index}/{len(article_urls)}] "
-            f"Scraping: {article_url}"
+            f"   [{index}/{total}] {url}"
         )
 
-        article = scrape_article_page(
-            article_url
+        html = await fetch_page(
+            page,
+            url,
         )
 
-        if article:
+        if not html:
+            return None
 
-            articles.append(article)
+        return extract_article(
+            html,
+            url,
+        )
 
-    return articles
+    except Exception as e:
 
+        print(
+            f"   [WARN] Article failed: {url}"
+        )
+        print(
+            f"          {e}"
+        )
+
+        return None
+
+    finally:
+
+        await page.close()
+
+
+# ============================================================
+# MAIN GENERIC SCRAPER
+# ============================================================
+
+async def scrape_company(
+    website,
+    max_pages=30,
+    concurrency=5,
+):
+    """
+    Generic company scraper.
+
+    Parameters
+    ----------
+    website:
+        Company website URL.
+
+    max_pages:
+        Maximum article/resource pages to scrape.
+
+    concurrency:
+        Number of pages scraped simultaneously.
+    """
+
+    website = normalize_url(
+        website
+    )
+
+    if not website:
+        raise ValueError(
+            "Invalid website URL"
+        )
+
+    print("=" * 70)
+    print("SEESEC GENERIC COMPANY SCRAPER")
+    print("=" * 70)
+
+    print(
+        f"Website: {website}"
+    )
+
+    async with async_playwright() as p:
+
+        browser = await p.chromium.launch(
+            headless=True
+        )
+
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            )
+        )
+
+        page = await context.new_page()
+
+        # ====================================================
+        # STEP 1 — HOMEPAGE
+        # ====================================================
+
+        print("\n[1/6] Fetching homepage...")
+
+        homepage_html = await fetch_page(
+            page,
+            website,
+        )
+
+        if not homepage_html:
+
+            await browser.close()
+
+            return {
+                "website": website,
+                "company_description": None,
+                "pages_discovered": 0,
+                "pages_scanned": 0,
+                "articles_found": 0,
+                "articles": [],
+                "social_links": {},
+                "failed_urls": [],
+            }
+
+        # ====================================================
+        # COMPANY INFO
+        # ====================================================
+
+        company_description = (
+            extract_description(
+                homepage_html
+            )
+        )
+
+        social_links = (
+            extract_social_links(
+                homepage_html
+            )
+        )
+
+        # ====================================================
+        # STEP 2 — INTERNAL LINKS
+        # ====================================================
+
+        print(
+            "[2/6] Discovering internal links..."
+        )
+
+        homepage_links = extract_links(
+            website,
+            homepage_html,
+        )
+
+        print(
+            f"Found {len(homepage_links)} internal links."
+        )
+
+        # ====================================================
+        # STEP 3 — SITEMAP
+        # ====================================================
+
+        print(
+            "[3/6] Checking sitemap..."
+        )
+
+        sitemap_urls = await discover_sitemaps(
+            page,
+            website,
+        )
+
+        sitemap_links = set()
+
+        if sitemap_urls:
+
+            print(
+                f"Found {len(sitemap_urls)} sitemap(s)."
+            )
+
+            sitemap_links = (
+                await extract_sitemap_urls(
+                    page,
+                    sitemap_urls,
+                    website,
+                    max_urls=max(
+                        200,
+                        max_pages * 5,
+                    ),
+                )
+            )
+
+            print(
+                f"Sitemap yielded "
+                f"{len(sitemap_links)} URLs."
+            )
+
+        else:
+
+            print(
+                "No sitemap detected."
+            )
+
+        # ====================================================
+        # STEP 4 — CANDIDATE DISCOVERY
+        # ====================================================
+
+        print(
+            "[4/6] Finding article/resource candidates..."
+        )
+
+        all_links = (
+            homepage_links
+            | sitemap_links
+        )
+
+        candidates = []
+
+        for url in all_links:
+
+            score = score_article_url(
+                url
+            )
+
+            if score > 0:
+
+                candidates.append(
+                    (score, url)
+                )
+
+        # Highest-confidence URLs first
+        candidates.sort(
+            key=lambda x: (
+                -x[0],
+                x[1],
+            )
+        )
+
+        # Remove duplicates
+        seen = set()
+        article_candidates = []
+
+        for score, url in candidates:
+
+            if url in seen:
+                continue
+
+            seen.add(url)
+
+            article_candidates.append(
+                url
+            )
+
+        # Limit scraping
+        article_candidates = (
+            article_candidates[:max_pages]
+        )
+
+        print(
+            f"Selected "
+            f"{len(article_candidates)} "
+            f"article/resource candidates."
+        )
+
+        # ====================================================
+        # STEP 5 — SCRAPE ARTICLES
+        # ====================================================
+
+        print(
+            "[5/6] Scraping article/resource pages..."
+        )
+
+        articles = []
+        failed_urls = []
+
+        semaphore = asyncio.Semaphore(
+            concurrency
+        )
+
+        async def scrape_with_limit(
+            index,
+            url,
+        ):
+
+            async with semaphore:
+
+                result = await scrape_article(
+                    context,
+                    url,
+                    index,
+                    len(article_candidates),
+                )
+
+                if result:
+                    return result
+
+                failed_urls.append(
+                    url
+                )
+
+                return None
+
+        tasks = [
+            scrape_with_limit(
+                i,
+                url,
+            )
+            for i, url in enumerate(
+                article_candidates,
+                1,
+            )
+        ]
+
+        results = await asyncio.gather(
+            *tasks
+        )
+
+        for result in results:
+
+            if result:
+                articles.append(
+                    result
+                )
+
+        # ====================================================
+        # STEP 6 — FINAL PROCESSING
+        # ====================================================
+
+        print(
+            "[6/6] Cleaning and deduplicating..."
+        )
+
+        unique_articles = {}
+
+        for article in articles:
+
+            url = article.get(
+                "url"
+            )
+
+            if url:
+                unique_articles[
+                    url
+                ] = article
+
+        articles = list(
+            unique_articles.values()
+        )
+
+        # Sort newest-ish / highest confidence
+        articles.sort(
+            key=lambda x: (
+                -(x.get(
+                    "article_score",
+                    0
+                )),
+                x.get(
+                    "title",
+                    "",
+                ).lower(),
+            )
+        )
+
+        await browser.close()
+
+    # ========================================================
+    # RESULT
+    # ========================================================
+
+    result = {
+        "website": website,
+        "company_description": company_description,
+        "pages_discovered": len(all_links),
+        "pages_scanned": len(
+            article_candidates
+        ),
+        "articles_found": len(
+            articles
+        ),
+        "articles": articles,
+        "social_links": social_links,
+        "failed_urls": failed_urls,
+    }
+
+    print("\n" + "=" * 70)
+
+    print(
+        f"Pages discovered: "
+        f"{result['pages_discovered']}"
+    )
+
+    print(
+        f"Pages scanned: "
+        f"{result['pages_scanned']}"
+    )
+
+    print(
+        f"Articles found: "
+        f"{result['articles_found']}"
+    )
+
+    print(
+        f"Social profiles: "
+        f"{len(result['social_links'])}"
+    )
+
+    print(
+        f"Failed pages: "
+        f"{len(result['failed_urls'])}"
+    )
+
+    print("=" * 70)
+
+    return result
+
+
+# ============================================================
+# SYNCHRONOUS WRAPPER
+# ============================================================
+
+def scrape(
+    website,
+    max_pages=30,
+    concurrency=5,
+):
+    """
+    Synchronous wrapper so the scraper can be called from
+    normal Python/FastAPI code.
+    """
+
+    return asyncio.run(
+        scrape_company(
+            website,
+            max_pages=max_pages,
+            concurrency=concurrency,
+        )
+    )
+
+
+# ============================================================
+# DIRECT TEST
+# ============================================================
 
 if __name__ == "__main__":
 
-    website = input(
-        "Enter company website: "
+    result = scrape(
+        "https://signzy.com",
+        max_pages=20,
+        concurrency=5,
     )
 
-    results = scrape_articles(website)
+    print("\n")
+    print("=" * 70)
+    print("FINAL RESULT")
+    print("=" * 70)
 
     print(
-        f"\nTOTAL REAL ARTICLES FOUND: "
-        f"{len(results)}\n"
+        f"\nWebsite: "
+        f"{result['website']}"
     )
 
-    for article in results[:10]:
+    print(
+        f"Pages discovered: "
+        f"{result['pages_discovered']}"
+    )
+
+    print(
+        f"Pages scanned: "
+        f"{result['pages_scanned']}"
+    )
+
+    print(
+        f"Articles found: "
+        f"{result['articles_found']}"
+    )
+
+    print(
+        f"\nCompany description:\n"
+        f"{result['company_description']}"
+    )
+
+    print(
+        "\nSocial profiles:"
+    )
+
+    for platform, url in (
+        result["social_links"].items()
+    ):
 
         print(
-            f"TITLE: {article['title']}"
+            f"  {platform}: {url}"
+        )
+
+    print(
+        "\nArticles:"
+    )
+
+    for article in result[
+        "articles"
+    ][:10]:
+
+        print(
+            f"\nTITLE: "
+            f"{article['title']}"
         )
 
         print(
-            f"URL: {article['url']}"
+            f"URL: "
+            f"{article['url']}"
         )
 
         print(
-            f"DATE: {article['date']}"
+            f"DATE: "
+            f"{article['published_date']}"
         )
 
         print(
-            f"CONTENT: "
-            f"{article['content'][:300]}..."
+            f"TYPE: "
+            f"{article['content_type']}"
         )
 
-        print("-" * 70)
+        print(
+            f"DESCRIPTION: "
+            f"{article['description']}"
+        )

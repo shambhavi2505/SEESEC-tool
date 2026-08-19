@@ -1,14 +1,27 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+    Index,
+)
+from sqlalchemy.orm import (
+    declarative_base,
+    sessionmaker,
+    relationship,
+)
 from datetime import datetime
 
 
 Base = declarative_base()
 
 
-# ==========================================
-# NEW: COMPANY TABLE
-# ==========================================
+# ============================================================
+# COMPANY
+# ============================================================
 
 class Company(Base):
 
@@ -23,7 +36,8 @@ class Company(Base):
     name = Column(
         String(100),
         nullable=False,
-        unique=True
+        unique=True,
+        index=True
     )
 
     website = Column(
@@ -31,18 +45,88 @@ class Company(Base):
         nullable=False
     )
 
+    # --------------------------------------------------------
+    # Company intelligence
+    # --------------------------------------------------------
+
+    description = Column(
+        Text,
+        nullable=True
+    )
+
+    industry = Column(
+        String(100),
+        nullable=True
+    )
+
+    # --------------------------------------------------------
+    # AI
+    # --------------------------------------------------------
+
     ai_summary = Column(
         Text,
         nullable=True
     )
 
+    # --------------------------------------------------------
+    # Scraping / caching
+    # --------------------------------------------------------
+
+    scrape_status = Column(
+        String(30),
+        default="never_scraped"
+    )
+
+    pages_discovered = Column(
+        Integer,
+        default=0
+    )
+
+    pages_scanned = Column(
+        Integer,
+        default=0
+    )
+
+    articles_found = Column(
+        Integer,
+        default=0
+    )
+
     last_scraped = Column(
+        DateTime,
+        nullable=True
+    )
+
+    created_at = Column(
         DateTime,
         default=datetime.utcnow
     )
-# ==========================================
+
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
+    # --------------------------------------------------------
+    # Relationships
+    # --------------------------------------------------------
+
+    social_profiles = relationship(
+        "SocialProfile",
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
+
+    scrape_runs = relationship(
+        "ScrapeRun",
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
+
+
+# ============================================================
 # EXISTING CONTENT TABLE
-# ==========================================
+# ============================================================
 
 class ContentItem(Base):
 
@@ -56,7 +140,8 @@ class ContentItem(Base):
 
     competitor_name = Column(
         String(100),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
     content_type = Column(
@@ -96,9 +181,9 @@ class ContentItem(Base):
     )
 
 
-# ==========================================
+# ============================================================
 # EXISTING OPPORTUNITIES TABLE
-# ==========================================
+# ============================================================
 
 class Opportunity(Base):
 
@@ -136,33 +221,226 @@ class Opportunity(Base):
     )
 
 
-# ==========================================
+# ============================================================
+# SOCIAL PROFILES
+# ============================================================
+
+class SocialProfile(Base):
+
+    __tablename__ = "social_profiles"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        autoincrement=True
+    )
+
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True
+    )
+
+    platform = Column(
+        String(50),
+        nullable=False
+    )
+
+    profile_url = Column(
+        Text,
+        nullable=False
+    )
+
+    discovered_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
+    company = relationship(
+        "Company",
+        back_populates="social_profiles"
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_social_company_platform",
+            "company_id",
+            "platform"
+        ),
+    )
+
+
+# ============================================================
+# SCRAPE RUN HISTORY
+# ============================================================
+
+class ScrapeRun(Base):
+
+    __tablename__ = "scrape_runs"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        autoincrement=True
+    )
+
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True
+    )
+
+    started_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
+    completed_at = Column(
+        DateTime,
+        nullable=True
+    )
+
+    status = Column(
+        String(30),
+        default="running"
+    )
+
+    pages_discovered = Column(
+        Integer,
+        default=0
+    )
+
+    pages_scanned = Column(
+        Integer,
+        default=0
+    )
+
+    articles_found = Column(
+        Integer,
+        default=0
+    )
+
+    error_message = Column(
+        Text,
+        nullable=True
+    )
+
+    company = relationship(
+        "Company",
+        back_populates="scrape_runs"
+    )
+
+
+# ============================================================
 # DATABASE CONNECTION
-# ==========================================
+# ============================================================
 
 DATABASE_URL = "sqlite:///./competitor_data.db"
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={
+        "check_same_thread": False
+    }
+)
 
 SessionLocal = sessionmaker(
-    bind=engine
+    bind=engine,
+    autocommit=False,
+    autoflush=False
 )
 
 
-# ==========================================
-# CREATE TABLES
-# ==========================================
+# ============================================================
+# DATABASE MIGRATION
+# ============================================================
+
+def migrate_existing_database():
+
+    """
+    Adds new Phase 2 columns to the existing companies table.
+
+    SQLAlchemy create_all() does not modify existing tables,
+    therefore these ALTER TABLE statements are required.
+    """
+
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+
+    if "companies" not in inspector.get_table_names():
+        return
+
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("companies")
+    }
+
+    new_columns = {
+        "description": "TEXT",
+        "industry": "VARCHAR(100)",
+        "scrape_status": "VARCHAR(30)",
+        "pages_discovered": "INTEGER",
+        "pages_scanned": "INTEGER",
+        "articles_found": "INTEGER",
+        "last_scraped": "DATETIME",
+        "created_at": "DATETIME",
+        "updated_at": "DATETIME",
+    }
+
+    with engine.begin() as connection:
+
+        for column_name, column_type in new_columns.items():
+
+            if column_name not in existing_columns:
+
+                print(
+                    f"[DB] Adding column: {column_name}"
+                )
+
+                connection.execute(
+                    text(
+                        f"ALTER TABLE companies "
+                        f"ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+
+
+# ============================================================
+# INITIALIZE DATABASE
+# ============================================================
 
 def init_db():
 
+    print("=" * 60)
+    print("SEESEC DATABASE INITIALIZATION")
+    print("=" * 60)
+
+    # First create existing tables
     Base.metadata.create_all(
         bind=engine
     )
 
-    print(
-        "Database initialized successfully!"
+    # Then migrate existing tables
+    migrate_existing_database()
+
+    # Create any new Phase 2 tables
+    Base.metadata.create_all(
+        bind=engine
     )
 
+    print()
+    print("[OK] Database initialized successfully.")
+    print("[OK] Phase 1 tables preserved.")
+    print("[OK] Phase 2 tables ready.")
+    print("=" * 60)
+
+
+# ============================================================
+# TEST
+# ============================================================
 
 if __name__ == "__main__":
 
