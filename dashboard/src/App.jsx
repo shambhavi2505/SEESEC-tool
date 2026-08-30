@@ -7,6 +7,7 @@ import SearchAnalyzeTab from "./SearchAnalyzeTab";
 import Login from "./Login";
 import CompareCompaniesTab from "./CompareCompaniesTab";
 import { API_BASE as API } from "./config";
+import logo from "./assets/logo.png";
 
 const COLORS = [
   "#6366f1",
@@ -441,7 +442,7 @@ export default function App() {
         position:"sticky", top:0, zIndex:100 }}>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
           <img 
-  src="/src/assets/logo.png" 
+          src={logo}
   alt="SEESEC Logo"
   style={{ 
     width: 50, 
