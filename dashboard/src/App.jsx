@@ -3,6 +3,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, Cell
 } from "recharts";
+import SearchAnalyzeTab from "./SearchAnalyzeTab";
+import Login from "./Login";
+import CompareCompaniesTab from "./CompareCompaniesTab";
 
 const API = "http://localhost:8000";
 
@@ -270,179 +273,6 @@ function ContentTab({ competitors }) {
 }
 
 
-function OpportunitiesTab() {
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api("/api/opportunities").then(d => { setData(d); setLoading(false); });
-  }, []);
-
-  if (loading) return (
-    <div style={{ color:"#8a8ab6", padding:80, textAlign:"center" }}>
-      Loading intelligence pipeline...
-    </div>
-  );
-
-  const gaps    = data?.gap_analyses || [];
-  const recs    = data?.recommendations || [];
-  const rawGaps = data?.gaps || [];
-  const summary = data?.executive_summary || "";
-  const impColor = { CRITICAL:"#ef4444", HIGH:"#f59e0b", MEDIUM:"#06b6d4" };
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
-
-      {/* Executive Summary */}
-      {summary && (
-        <Card style={{ borderLeft:"4px solid #6366f1",
-          background:"linear-gradient(135deg,#1a1a35,#16162a)" }}>
-          <SectionTitle>Executive Intelligence Summary</SectionTitle>
-          <p style={{ color:"#d2d2f0", lineHeight:1.8, fontSize:14, margin:0 }}>{summary}</p>
-        </Card>
-      )}
-
-      {/* Gap Score Bar Chart */}
-      {rawGaps.length > 0 && (
-        <Card>
-          <SectionTitle>Content Gap Scores — Ranked by Opportunity</SectionTitle>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart
-              data={rawGaps.slice(0,10).map(g => ({ topic:g.topic, score:g.gap_score }))}
-              layout="vertical" barSize={16} margin={{ left:20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e38" horizontal={false}/>
-              <XAxis type="number" tick={{ fill:"#7e7eb2", fontSize:11 }}
-                axisLine={false} tickLine={false}/>
-              <YAxis type="category" dataKey="topic" width={140}
-                tick={{ fill:"#d2d2f0", fontSize:11 }} axisLine={false} tickLine={false}/>
-              <Tooltip contentStyle={{ background:"#0f0f23", border:"1px solid #232343",
-                borderRadius:8 }} labelStyle={{ color:"#d2d2f0" }}
-                itemStyle={{ color:"#6366f1" }}/>
-              <Bar dataKey="score" radius={[0,6,6,0]}>
-                {rawGaps.slice(0,10).map((_,i) => (
-                  <Cell key={i} fill={COLORS[i%COLORS.length]}/>
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <div style={{ color:"#6b6b9a", fontSize:11, marginTop:8 }}>
-            Higher score = more competitors covering it + higher strategic importance + lower current coverage
-          </div>
-        </Card>
-      )}
-
-      {!gaps.length && !recs.length && (
-        <Card style={{ textAlign:"center", padding:48 }}>
-          <div style={{ color:"#8a8ab6", fontSize:14, lineHeight:1.7 }}>
-            No AI insights generated yet.<br/>
-            <code style={{ background:"#0f0f23", padding:"4px 10px",
-              borderRadius:6, color:"#f59e0b", fontSize:12 }}>
-              python analysis/ai.py
-            </code>
-          </div>
-        </Card>
-      )}
-
-      {/* Gap Analyses */}
-      {gaps.length > 0 && (
-        <div>
-          <div style={{ color:"#d2d2f0", fontWeight:700, fontSize:15, marginBottom:14 }}>
-            Content Gap Analysis
-          </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            {gaps.map((g, i) => {
-              const color = impColor[g.strategic_importance] || "#6366f1";
-              return (
-                <Card key={i} style={{ borderLeft:`4px solid ${color}` }}>
-                  <div style={{ display:"flex", justifyContent:"space-between",
-                    alignItems:"center", marginBottom:10 }}>
-                    <div style={{ color, fontWeight:700, fontSize:15 }}>{g.topic}</div>
-                    <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                      <span style={{ color:"#6b6b9a", fontSize:11 }}>
-                        Gap Score: <b style={{ color:"#d2d2f0" }}>{g.gap_score}</b>
-                      </span>
-                      <Badge text={g.strategic_importance} color={color}/>
-                    </div>
-                  </div>
-                  <p style={{ color:"#cbd5e1", fontSize:13, lineHeight:1.7,
-                    marginBottom:12, marginTop:0 }}>{g.seesec_opportunity}</p>
-                  <div style={{ color:"#6b6b9a", fontSize:12, marginBottom:14 }}>
-                    Target: <span style={{ color:"#d2d2f0" }}>{g.target_audience}</span>
-                  </div>
-                  <div style={{ background:"#0f0f23", borderRadius:10,
-                    padding:"14px 18px", border:"1px solid #232343" }}>
-                    <div style={{ color:"#6b6b9a", fontSize:10, fontWeight:700,
-                      textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:10 }}>
-                      SEO Title Ideas
-                    </div>
-                    {(g.seo_titles||[]).map((t,j) => (
-                      <div key={j} style={{ color:"#10b981", fontSize:13,
-                        fontWeight:500, marginBottom:6, paddingLeft:4,
-                        borderLeft:"2px solid #10b98133", paddingLeft:10 }}>
-                        {t}
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Recommendations */}
-      {recs.length > 0 && (
-        <div>
-          <div style={{ color:"#d2d2f0", fontWeight:700, fontSize:15,
-            marginBottom:14, marginTop:8 }}>
-            AI Content Recommendations for SEESEC
-          </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            {recs.map((r, i) => (
-              <Card key={i} style={{ borderLeft:"4px solid #10b981" }}>
-                <div style={{ display:"flex", gap:14, alignItems:"flex-start", marginBottom:10 }}>
-                  <div style={{ background: r.estimated_impact==="High"?"#ef444415":"#f59e0b15",
-                    border:`1px solid ${r.estimated_impact==="High"?"#ef4444":"#f59e0b"}30`,
-                    borderRadius:8, padding:"6px 10px", flexShrink:0 }}>
-                    <ImpactDot level={r.estimated_impact}/>
-                    <span style={{ color: r.estimated_impact==="High"?"#ef4444":"#f59e0b",
-                      fontSize:10, fontWeight:700, textTransform:"uppercase",
-                      letterSpacing:"0.08em" }}>{r.estimated_impact}</span>
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ color:"#e2e2f8", fontWeight:600, fontSize:14,
-                      lineHeight:1.4 }}>{r.title}</div>
-                    <div style={{ color:"#6b6b9a", fontSize:11, marginTop:5 }}>
-                      {r.content_type} &nbsp;·&nbsp;
-                      Keyword: <span style={{ color:"#06b6d4", fontWeight:500 }}>
-                        {r.target_keyword}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <p style={{ color:"#cbd5e1", fontSize:13, lineHeight:1.7,
-                  marginBottom:12, marginTop:0 }}>{r.why_now}</p>
-                {r.outline?.length > 0 && (
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                    {r.outline.map((s,j) => (
-                      <span key={j} style={{ background:"#0f0f23", color:"#7e7eb2",
-                        border:"1px solid #232343", borderRadius:6,
-                        padding:"3px 10px", fontSize:11 }}>
-                        {j+1}. {s}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
 function CompareTab({ topics, stats }) {
   if (!topics || !stats) return (
     <div style={{ color:"#8a8ab6", padding:80, textAlign:"center" }}>
@@ -573,16 +403,16 @@ function CompareTab({ topics, stats }) {
   );
 }
 
-
-const TABS = ["Overview","Content Feed","Opportunities","Compare Competitors"];
+const TABS = ["Analyze Competitor","Overview","Content Feed","Compare Competitors","Side-by-Side"];
 
 export default function App() {
+  const [authed, setAuthed]     = useState(
+    localStorage.getItem("seesec_authed") === "true"
+  );
   const [tab, setTab]           = useState("Overview");
   const [stats, setStats]       = useState(null);
   const [topics, setTopics]     = useState(null);
   const [competitors, setComps] = useState([]);
-  const [aiStatus, setAiStatus] = useState("");
-  const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
     api("/api/stats").then(setStats).catch(()=>{});
@@ -590,26 +420,13 @@ export default function App() {
     api("/api/competitors").then(d=>setComps(d.competitors||[])).catch(()=>{});
   }, []);
 
-  const runAnalysis = async () => {
-    setAnalyzing(true);
-    setAiStatus("Starting...");
-    try {
-      await fetch(`${API}/api/analyze`, { method:"POST" });
-      setAiStatus("Running (~45s)...");
-      const poll = setInterval(async () => {
-        const s = await api("/api/analyze/status");
-        setAiStatus(s.message||"");
-        if (!s.running) { clearInterval(poll); setAnalyzing(false); }
-      }, 3000);
-    } catch {
-      setAiStatus("❌ Failed");
-      setAnalyzing(false);
-    }
-  };
+  if (!authed) {
+    return <Login onSuccess={() => setAuthed(true)} />;
+  }
 
   return (
-    <div style={{ minHeight:"100vh", background:"#0b0b14",
-      color:"#d2d2f0", fontFamily:"'Inter',system-ui,sans-serif" }}>
+    <div style={{ minHeight:"120vh", background:"#0b0b14",
+      color:"#d2d2f0", fontFamily:"'Poppins',system-ui,sans-serif" }}>
       <style>{`
         * { box-sizing:border-box; }
         @keyframes spin { to { transform:rotate(360deg); } }
@@ -641,35 +458,6 @@ export default function App() {
             Competitor Intelligence
           </span>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-          {aiStatus && (
-            <span style={{ fontSize:12, fontWeight:500,
-              color: aiStatus.includes("❌") ? "#ef4444"
-                : aiStatus.includes("✅") ? "#10b981" : "#f59e0b",
-              background:"#0f0f23", padding:"5px 12px",
-              borderRadius:6, border:"1px solid #232343" }}>
-              {aiStatus}
-            </span>
-          )}
-          <button onClick={runAnalysis} disabled={analyzing} style={{
-            background: analyzing ? "#1d1d36"
-              :"linear-gradient(135deg,#6366f1,#8b5cf6)",
-            border:"none", borderRadius:8,
-            color: analyzing ? "#6b6b9a":"#fff",
-            padding:"8px 18px", fontSize:12, fontWeight:600,
-            cursor: analyzing ? "not-allowed":"pointer",
-            display:"flex", alignItems:"center", gap:8,
-            boxShadow: analyzing ? "none":"0 4px 14px rgba(99,102,241,0.3)"
-          }}>
-            {analyzing && (
-              <div style={{ width:12, height:12,
-                border:"2px solid #6b6b9a",
-                borderTopColor:"transparent", borderRadius:"50%",
-                animation:"spin 0.7s linear infinite" }}/>
-            )}
-            {analyzing ? "Analyzing..." : "⚡ Run AI Analysis"}
-          </button>
-        </div>
       </div>
 
       {/* Tab bar */}
@@ -689,10 +477,13 @@ export default function App() {
 
       {/* Content */}
       <div style={{ padding:"32px", maxWidth:1300, margin:"0 auto" }}>
+        <div style={{ display: tab==="Analyze Competitor" ? "block" : "none" }}>
+          <SearchAnalyzeTab/>
+        </div>
         {tab==="Overview"           && <OverviewTab stats={stats} topics={topics}/>}
         {tab==="Content Feed"       && <ContentTab competitors={competitors}/>}
-        {tab==="Opportunities"      && <OpportunitiesTab/>}
         {tab==="Compare Competitors" && <CompareTab topics={topics} stats={stats}/>}
+        {tab==="Side-by-Side"        && <CompareCompaniesTab/>}
       </div>
     </div>
   );

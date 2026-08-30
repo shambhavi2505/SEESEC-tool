@@ -58,7 +58,14 @@ class Company(Base):
         String(100),
         nullable=True
     )
-
+    social_links = Column(
+        Text,
+        nullable=True
+    )
+    tech_stack = Column(
+        Text,
+        nullable=True
+    )
     # --------------------------------------------------------
     # AI
     # --------------------------------------------------------

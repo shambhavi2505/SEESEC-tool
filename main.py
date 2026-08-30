@@ -61,7 +61,7 @@ from analysis.comp_ai import (
 # =============================================================================
 
 from scraper.search import find_website
-from scraper.generic import scrape_articles
+from scraper.generic import scrape as scrape_articles
 from scraper.save_company import save_company_data
 
 
@@ -585,6 +585,7 @@ def analyze_company(
     background_tasks: BackgroundTasks,
     company_name: str,
     website: str,
+    force_refresh: bool = False,
 ):
 
     """
@@ -673,25 +674,25 @@ def analyze_company(
 
         db.close()
 
-    # --------------------------------------------------
+        # --------------------------------------------------
     # Existing company
     #
-    # IMPORTANT:
-    # We currently return cached data.
-    # Later we will add a "refresh" option.
+    # By default we return cached data for speed.
+    # If force_refresh=True, we skip the cache and
+    # re-run the full live scraping + AI pipeline.
     # --------------------------------------------------
 
-    if existing:
+    if existing and not force_refresh:
 
         return {
             "status": "cached",
             "message": (
                 f"{company_name} has already "
-                "been analysed."
+                "been analysed. Pass force_refresh=true "
+                "to re-scrape."
             ),
             "company": company_name,
         }
-
     # --------------------------------------------------
     # Initialize status
     # --------------------------------------------------
@@ -795,7 +796,172 @@ def company_analysis_status(
 # =============================================================================
 # GET SINGLE COMPANY
 # =============================================================================
+@app.get("/api/compare-companies")
+def compare_companies(names: str):
 
+    """
+    Get side-by-side comparison data for 2-4 already-analysed companies.
+
+    names: comma-separated company names, e.g. "Signzy,Bureau,IDfy"
+    """
+
+    from analysis.comp_ai import compute_topic_distribution
+
+    requested = [
+        n.strip() for n in names.split(",") if n.strip()
+    ][:4]
+
+    if len(requested) < 2:
+        return {
+            "error": "Please provide at least 2 company names to compare.",
+        }
+
+    db = SessionLocal()
+
+    try:
+
+        results = []
+
+        for name in requested:
+            company = (
+                db.query(Company)
+                .filter(func.lower(Company.name) == name.lower())
+                .first()
+            )
+
+            if not company:
+                results.append({
+                    "company": name,
+                    "found": False,
+                })
+                continue
+
+            articles = (
+                db.query(ContentItem)
+                .filter(ContentItem.competitor_name == name)
+                .all()
+            )
+
+            article_dicts = [
+                {
+                    "title": a.title,
+                    "description": a.summary,
+                    "topics": a.topics,
+                }
+                for a in articles
+            ]
+
+            topic_counts = compute_topic_distribution(article_dicts)
+
+            top_topics = sorted(
+                topic_counts.items(),
+                key=lambda x: -x[1],
+            )[:5]
+
+            results.append({
+                "company": company.name,
+                "found": True,
+                "website": company.website,
+                "description": getattr(company, "description", None),
+                "article_count": len(articles),
+                "last_scraped": (
+                    str(company.last_scraped)
+                    if company.last_scraped
+                    else None
+                ),
+                "top_topics": [
+                    {"topic": t, "count": c}
+                    for t, c in top_topics
+                ],
+            })
+
+        return {"companies": results}
+
+    finally:
+
+        db.close()
+def _compute_content_type_breakdown(articles):
+    counts = {}
+    for a in articles:
+        t = a.content_type or "Blog Post"
+        counts[t] = counts.get(t, 0) + 1
+    return [
+        {"type": t, "count": c}
+        for t, c in sorted(counts.items(), key=lambda x: -x[1])
+    ]
+
+
+def _parse_article_date(raw):
+    """
+    Best-effort parsing of the messy date formats we see from
+    different sites (ISO strings with/without milliseconds, a
+    literal "Z" UTC suffix, RFC-822-ish, etc). Returns a naive
+    datetime (timezone stripped, for safe subtraction/sorting)
+    or None if unparseable — we don't want a bad date string to
+    crash the whole endpoint.
+    """
+    if not raw or raw == "—":
+        return None
+
+    raw = raw.strip()
+
+    # Normalize a trailing literal "Z" (UTC) to +00:00 so %z can
+    # actually parse it — Python's %z does not accept bare "Z".
+    normalized = raw
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S.%f%z",
+        "%a %b %d %H:%M:%S %Z %Y",
+    ):
+        try:
+            dt = datetime.strptime(normalized, fmt)
+            return dt.replace(tzinfo=None)
+        except (ValueError, TypeError):
+            continue
+
+    try:
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(raw)
+        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+    except Exception:
+        return None
+
+
+def _compute_publishing_frequency(articles):
+    dates = sorted(
+        d for d in (
+            _parse_article_date(a.published_date) for a in articles
+        ) if d is not None
+    )
+
+    if len(dates) < 2:
+        return {
+            "articles_with_known_date": len(dates),
+            "avg_days_between_posts": None,
+            "summary": "Not enough dated articles to compute frequency.",
+        }
+
+    gaps = [
+        (dates[i + 1] - dates[i]).days
+        for i in range(len(dates) - 1)
+    ]
+    avg_gap = sum(gaps) / len(gaps) if gaps else None
+
+    return {
+        "articles_with_known_date": len(dates),
+        "avg_days_between_posts": round(avg_gap, 1) if avg_gap else None,
+        "summary": (
+            f"Publishes roughly every {round(avg_gap)} days "
+            f"(based on {len(dates)} dated articles)."
+            if avg_gap else "Not enough dated articles to compute frequency."
+        ),
+    }
 @app.get("/api/company/{company_name}")
 def get_company(
     company_name: str,
@@ -859,6 +1025,20 @@ def get_company(
                     None,
                 )
             ),
+            "social_links": (
+                getattr(
+                    company,
+                    "social_links",
+                    None,
+                )
+            ),
+            "tech_stack": (
+                getattr(
+                    company,
+                    "tech_stack",
+                    None,
+                )
+            ),
 
             "ai_summary": (
                 company.ai_summary
@@ -903,6 +1083,45 @@ def get_company(
             ),
 
             "article_count": len(articles),
+                        "article_count": len(articles),
+
+            "content_type_breakdown": (
+
+                _compute_content_type_breakdown(articles)
+
+            ),
+
+            "publishing_frequency": (
+
+                _compute_publishing_frequency(articles)
+
+            ),
+
+            "trending_keywords": (
+
+                [
+
+                    {"word": w, "count": c}
+
+                    for w, c in list(
+
+                        get_keyword_freq(
+
+                            [
+
+                                (company_name, a.title)
+
+                                for a in articles
+
+                            ]
+
+                        ).items()
+
+                    )[:10]
+
+                ]
+
+            ),
 
             "articles": [
 
@@ -1157,11 +1376,15 @@ def run_company_pipeline(
 
                 "running": False,
 
-                "stage": "completed",
+                "stage": "no_content",
 
                 "message": (
                     "No articles/resources "
-                    "were found on this website."
+                    "were found on this website. "
+                    "This can happen if the site blocks "
+                    "automated crawling, hosts content on "
+                    "a different domain, or genuinely has "
+                    "no blog/resources section."
                 ),
 
                 "progress": 100,
@@ -1192,13 +1415,7 @@ def run_company_pipeline(
 
             "progress": 55,
         })
-
-        save_company_data(
-            company_name,
-            website,
-            articles,
-        )
-
+        save_company_data(company_name, website, scrape_result)
         # ==============================================================
         # STEP 4 — AI ANALYSIS
         # ==============================================================
@@ -1213,12 +1430,16 @@ def run_company_pipeline(
 
             "progress": 70,
         })
-
         summary = generate_competitor_summary(
             company_name,
             articles,
+            company_description=scrape_result.get("company_description"),
         )
 
+        print(
+            f"\n[DEBUG] Raw AI summary for {company_name} "
+            f"(first 300 chars):\n{str(summary)[:300]}\n"
+        )
         # ==============================================================
         # STEP 5 — SAVE AI RESULTS
         # ==============================================================

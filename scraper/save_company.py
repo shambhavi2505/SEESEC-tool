@@ -17,6 +17,8 @@ from database.models import (
     ContentItem,
 )
 
+from analysis.topics import tag_topics
+
 
 def save_company_data(
     company_name: str,
@@ -81,29 +83,45 @@ def save_company_data(
 
         if hasattr(company, "pages_discovered"):
             company.pages_discovered = scrape_result.get(
-                "pages_discovered", 0
+                "pages_discovered",
+                0,
             )
 
         if hasattr(company, "pages_scanned"):
             company.pages_scanned = scrape_result.get(
-                "pages_scanned", 0
+                "pages_scanned",
+                0,
             )
 
         if hasattr(company, "articles_found"):
             company.articles_found = scrape_result.get(
-                "articles_found", 0
+                "articles_found",
+                0,
             )
 
         if hasattr(company, "scrape_status"):
             company.scrape_status = "completed"
 
+        if hasattr(company, "description") and scrape_result.get("company_description"):
+            company.description = scrape_result.get("company_description")
+
+        if hasattr(company, "social_links"):
+            import json
+            company.social_links = json.dumps(
+                scrape_result.get("social_links", {})
+            )
+        if hasattr(company, "tech_stack"):
+            import json
+            company.tech_stack = json.dumps(
+                scrape_result.get("tech_stack", [])
+            )
         # --------------------------------------------------
         # 3. Save articles
         # --------------------------------------------------
 
         articles = scrape_result.get(
             "articles",
-            []
+            [],
         )
 
         saved_count = 0
@@ -112,12 +130,21 @@ def save_company_data(
         for article in articles:
 
             url = article.get("url")
-
             title = article.get("title")
 
+            # Skip incomplete articles
             if not url or not title:
                 skipped_count += 1
                 continue
+
+            # --------------------------------------------------
+            # Generate topic tags
+            # --------------------------------------------------
+
+            topics = tag_topics(
+                title,
+                article.get("description"),
+            )
 
             # --------------------------------------------------
             # Check whether this URL already exists
@@ -133,8 +160,8 @@ def save_company_data(
 
             if existing:
 
-                # Update useful fields rather than
-                # creating duplicate rows.
+                # Update existing article instead of
+                # creating a duplicate.
 
                 existing.title = title
 
@@ -149,14 +176,16 @@ def save_company_data(
                     or existing.published_date
                 )
 
+                existing.competitor_name = (
+                    company_name
+                )
+
                 existing.summary = (
                     article.get("description")
                     or existing.summary
                 )
 
-                existing.competitor_name = (
-                    company_name
-                )
+                existing.topics = topics
 
                 skipped_count += 1
 
@@ -167,7 +196,6 @@ def save_company_data(
             # --------------------------------------------------
 
             item = ContentItem(
-
                 competitor_name=company_name,
 
                 content_type=(
@@ -190,6 +218,8 @@ def save_company_data(
                 scraped_time=datetime.now(
                     timezone.utc
                 ).replace(tzinfo=None),
+
+                topics=topics,
             )
 
             db.add(item)

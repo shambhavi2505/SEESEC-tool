@@ -3,9 +3,10 @@ import json
 import re
 from datetime import datetime
 from urllib.parse import urljoin, urlparse, urldefrag
-
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
+
+from analysis.techstack import detect_tech_stack
 
 
 # ============================================================
@@ -34,7 +35,33 @@ ARTICLE_PATH_KEYWORDS = [
     "post",
     "posts",
 ]
+# Bare hub/index pages (e.g. /blog with no further path segments).
+# These are landing pages, not individual articles — they should be
+# crawled INTO for real content, not treated as articles themselves.
+HUB_PATH_NAMES = {
+    "blog", "blogs", "news", "insights", "resources",
+    "articles", "press", "press-release", "press-releases",
+    "case-study", "case-studies", "stories",
+}
 
+
+def is_bare_hub_url(url):
+    """
+    True if the URL is just a hub root like /blog or /news,
+    with no further path segments (i.e. not an individual post).
+    """
+
+    if not url:
+        return False
+
+    segments = [
+        s for s in urlparse(url).path.lower().split("/") if s
+    ]
+
+    return (
+        len(segments) == 1
+        and segments[0] in HUB_PATH_NAMES
+    )
 CONTENT_TYPE_RULES = {
     "Case Study": [
         "case-study",
@@ -128,7 +155,11 @@ def normalize_url(url):
 
 def same_domain(base_url, target_url):
     """
-    Check whether target URL belongs to the same domain.
+    Check whether target URL belongs to the same site as the base URL.
+
+    Treats subdomains as the same site (e.g. blog.example.com counts
+    as the same site as www.example.com / example.com), since many
+    companies host their blog/resources section on a subdomain.
     """
 
     if not base_url or not target_url:
@@ -148,8 +179,13 @@ def same_domain(base_url, target_url):
         .replace("www.", "")
     )
 
-    return base_domain == target_domain
+    if base_domain == target_domain:
+        return True
 
+    base_root = ".".join(base_domain.split(".")[-2:])
+    target_root = ".".join(target_domain.split(".")[-2:])
+
+    return bool(base_root) and base_root == target_root
 
 def is_valid_http_url(url):
     """
@@ -201,13 +237,17 @@ def is_asset_url(url):
 # ============================================================
 # ARTICLE DETECTION
 # ============================================================
-
 def looks_like_article_url(url):
     """
     Determine whether a URL looks like an article/resource page.
     """
 
     if not url:
+        return False
+
+    # Bare hub/index pages (e.g. /blog) are landing pages, not
+    # individual articles.
+    if is_bare_hub_url(url):
         return False
 
     path = urlparse(url).path.lower()
@@ -990,367 +1030,249 @@ async def scrape_company(
 ):
     """
     Generic company scraper.
-
-    Parameters
-    ----------
-    website:
-        Company website URL.
-
-    max_pages:
-        Maximum article/resource pages to scrape.
-
-    concurrency:
-        Number of pages scraped simultaneously.
     """
 
-    website = normalize_url(
-        website
-    )
+    website = normalize_url(website)
 
     if not website:
-        raise ValueError(
-            "Invalid website URL"
-        )
+        raise ValueError("Invalid website URL")
 
     print("=" * 70)
     print("SEESEC GENERIC COMPANY SCRAPER")
     print("=" * 70)
-
-    print(
-        f"Website: {website}"
-    )
+    print(f"Website: {website}")
 
     async with async_playwright() as p:
-
-        browser = await p.chromium.launch(
-            headless=True
-        )
+        browser = await p.chromium.launch(headless=True)
 
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/131.0.0.0 Safari/537.36"
             )
         )
 
         page = await context.new_page()
 
-        # ====================================================
-        # STEP 1 — HOMEPAGE
-        # ====================================================
+        try:
+            # STEP 1 — HOMEPAGE
+            print("\n[1/6] Fetching homepage...")
 
-        print("\n[1/6] Fetching homepage...")
+            homepage_html = await fetch_page(page, website)
 
-        homepage_html = await fetch_page(
-            page,
-            website,
-        )
+            if not homepage_html:
+                return {
+                    "website": website,
+                    "company_description": None,
+                    "pages_discovered": 0,
+                    "pages_scanned": 0,
+                    "articles_found": 0,
+                    "articles": [],
+                    "social_links": {},
+                    "tech_stack"
+                    "failed_urls": [],
+                }
 
-        if not homepage_html:
-
-            await browser.close()
-
-            return {
-                "website": website,
-                "company_description": None,
-                "pages_discovered": 0,
-                "pages_scanned": 0,
-                "articles_found": 0,
-                "articles": [],
-                "social_links": {},
-                "failed_urls": [],
-            }
-
-        # ====================================================
-        # COMPANY INFO
-        # ====================================================
-
-        company_description = (
-            extract_description(
+            company_description = extract_description(homepage_html)
+            social_links = extract_social_links(homepage_html)
+            social_links = (
+                extract_social_links(
+                    homepage_html
+                )
+            )
+            tech_stack = detect_tech_stack(
                 homepage_html
-            )
         )
 
-        social_links = (
-            extract_social_links(
-                homepage_html
-            )
-        )
+            # STEP 2 — INTERNAL LINKS
+            print("[2/6] Discovering internal links...")
 
-        # ====================================================
-        # STEP 2 — INTERNAL LINKS
-        # ====================================================
+            homepage_links = extract_links(website, homepage_html)
 
-        print(
-            "[2/6] Discovering internal links..."
-        )
+            print(f"Found {len(homepage_links)} internal links.")
 
-        homepage_links = extract_links(
-            website,
-            homepage_html,
-        )
+            # STEP 3 — SITEMAP
+            print("[3/6] Checking sitemap...")
 
-        print(
-            f"Found {len(homepage_links)} internal links."
-        )
+            sitemap_urls = await discover_sitemaps(page, website)
+            sitemap_links = set()
 
-        # ====================================================
-        # STEP 3 — SITEMAP
-        # ====================================================
+            if sitemap_urls:
+                print(f"Found {len(sitemap_urls)} sitemap(s).")
 
-        print(
-            "[3/6] Checking sitemap..."
-        )
-
-        sitemap_urls = await discover_sitemaps(
-            page,
-            website,
-        )
-
-        sitemap_links = set()
-
-        if sitemap_urls:
-
-            print(
-                f"Found {len(sitemap_urls)} sitemap(s)."
-            )
-
-            sitemap_links = (
-                await extract_sitemap_urls(
+                sitemap_links = await extract_sitemap_urls(
                     page,
                     sitemap_urls,
                     website,
-                    max_urls=max(
-                        200,
-                        max_pages * 5,
-                    ),
+                    max_urls=max(200, max_pages * 5),
                 )
+
+                print(
+                    f"Sitemap yielded {len(sitemap_links)} URLs."
+                )
+            else:
+                print("No sitemap detected.")
+
+            # STEP 3.5 — HUB EXPANSION
+            all_links = homepage_links | sitemap_links
+
+            hub_urls = [
+                url for url in all_links
+                if is_bare_hub_url(url)
+            ][:5]
+
+            if hub_urls:
+                print(
+                    f"[3.5/6] Expanding {len(hub_urls)} hub page(s)..."
+                )
+
+                for hub_url in hub_urls:
+                    hub_html = await fetch_page(page, hub_url)
+
+                    if hub_html:
+                        hub_links = extract_links(
+                            hub_url,
+                            hub_html,
+                        )
+
+                        all_links |= hub_links
+
+            # STEP 4 — CANDIDATE DISCOVERY
+            print(
+                "[4/6] Finding article/resource candidates..."
             )
+
+            candidates = []
+
+            for url in all_links:
+                if not looks_like_article_url(url):
+                    continue
+
+                score = score_article_url(url)
+
+                if score > 0:
+                    candidates.append((score, url))
+
+            candidates.sort(
+                key=lambda x: (-x[0], x[1])
+            )
+
+            seen = set()
+            article_candidates = []
+
+            for score, url in candidates:
+                if url in seen:
+                    continue
+
+                seen.add(url)
+                article_candidates.append(url)
+
+            article_candidates = article_candidates[:max_pages]
 
             print(
-                f"Sitemap yielded "
-                f"{len(sitemap_links)} URLs."
+                f"Selected {len(article_candidates)} "
+                f"article/resource candidates."
             )
 
-        else:
-
+            # STEP 5 — SCRAPE ARTICLES
             print(
-                "No sitemap detected."
+                "[5/6] Scraping article/resource pages..."
             )
 
-        # ====================================================
-        # STEP 4 — CANDIDATE DISCOVERY
-        # ====================================================
+            articles = []
+            failed_urls = []
+            semaphore = asyncio.Semaphore(concurrency)
 
-        print(
-            "[4/6] Finding article/resource candidates..."
-        )
+            async def scrape_with_limit(index, url):
+                async with semaphore:
+                    result = await scrape_article(
+                        context,
+                        url,
+                        index,
+                        len(article_candidates),
+                    )
 
-        all_links = (
-            homepage_links
-            | sitemap_links
-        )
+                    if result:
+                        return result
 
-        candidates = []
+                    failed_urls.append(url)
+                    return None
 
-        for url in all_links:
-
-            score = score_article_url(
-                url
-            )
-
-            if score > 0:
-
-                candidates.append(
-                    (score, url)
+            tasks = [
+                scrape_with_limit(index, url)
+                for index, url in enumerate(
+                    article_candidates,
+                    1,
                 )
+            ]
 
-        # Highest-confidence URLs first
-        candidates.sort(
-            key=lambda x: (
-                -x[0],
-                x[1],
-            )
-        )
+            results = await asyncio.gather(*tasks)
 
-        # Remove duplicates
-        seen = set()
-        article_candidates = []
-
-        for score, url in candidates:
-
-            if url in seen:
-                continue
-
-            seen.add(url)
-
-            article_candidates.append(
-                url
-            )
-
-        # Limit scraping
-        article_candidates = (
-            article_candidates[:max_pages]
-        )
-
-        print(
-            f"Selected "
-            f"{len(article_candidates)} "
-            f"article/resource candidates."
-        )
-
-        # ====================================================
-        # STEP 5 — SCRAPE ARTICLES
-        # ====================================================
-
-        print(
-            "[5/6] Scraping article/resource pages..."
-        )
-
-        articles = []
-        failed_urls = []
-
-        semaphore = asyncio.Semaphore(
-            concurrency
-        )
-
-        async def scrape_with_limit(
-            index,
-            url,
-        ):
-
-            async with semaphore:
-
-                result = await scrape_article(
-                    context,
-                    url,
-                    index,
-                    len(article_candidates),
-                )
-
+            for result in results:
                 if result:
-                    return result
+                    articles.append(result)
 
-                failed_urls.append(
-                    url
+            # STEP 6 — FINAL PROCESSING
+            print("[6/6] Cleaning and deduplicating...")
+
+            unique_articles = {}
+
+            for article in articles:
+                article_url = article.get("url")
+
+                if article_url:
+                    unique_articles[article_url] = article
+
+            articles = list(unique_articles.values())
+
+            articles.sort(
+                key=lambda x: (
+                    -x.get("article_score", 0),
+                    x.get("title", "").lower(),
                 )
-
-                return None
-
-        tasks = [
-            scrape_with_limit(
-                i,
-                url,
-            )
-            for i, url in enumerate(
-                article_candidates,
-                1,
-            )
-        ]
-
-        results = await asyncio.gather(
-            *tasks
-        )
-
-        for result in results:
-
-            if result:
-                articles.append(
-                    result
-                )
-
-        # ====================================================
-        # STEP 6 — FINAL PROCESSING
-        # ====================================================
-
-        print(
-            "[6/6] Cleaning and deduplicating..."
-        )
-
-        unique_articles = {}
-
-        for article in articles:
-
-            url = article.get(
-                "url"
             )
 
-            if url:
-                unique_articles[
-                    url
-                ] = article
+            result = {
+                "website": website,
+                "company_description": company_description,
+                "pages_discovered": len(all_links),
+                "pages_scanned": len(article_candidates),
+                "articles_found": len(articles),
+                "articles": articles,
+                "social_links": social_links,
+                "tech_stack": tech_stack,
+                "failed_urls": failed_urls,
+            }
 
-        articles = list(
-            unique_articles.values()
-        )
-
-        # Sort newest-ish / highest confidence
-        articles.sort(
-            key=lambda x: (
-                -(x.get(
-                    "article_score",
-                    0
-                )),
-                x.get(
-                    "title",
-                    "",
-                ).lower(),
+            print("\n" + "=" * 70)
+            print(
+                f"Pages discovered: "
+                f"{result['pages_discovered']}"
             )
-        )
+            print(
+                f"Pages scanned: "
+                f"{result['pages_scanned']}"
+            )
+            print(
+                f"Articles found: "
+                f"{result['articles_found']}"
+            )
+            print(
+                f"Social profiles: "
+                f"{len(result['social_links'])}"
+            )
+            print(
+                f"Failed pages: "
+                f"{len(result['failed_urls'])}"
+            )
+            print("=" * 70)
 
-        await browser.close()
+            return result
 
-    # ========================================================
-    # RESULT
-    # ========================================================
-
-    result = {
-        "website": website,
-        "company_description": company_description,
-        "pages_discovered": len(all_links),
-        "pages_scanned": len(
-            article_candidates
-        ),
-        "articles_found": len(
-            articles
-        ),
-        "articles": articles,
-        "social_links": social_links,
-        "failed_urls": failed_urls,
-    }
-
-    print("\n" + "=" * 70)
-
-    print(
-        f"Pages discovered: "
-        f"{result['pages_discovered']}"
-    )
-
-    print(
-        f"Pages scanned: "
-        f"{result['pages_scanned']}"
-    )
-
-    print(
-        f"Articles found: "
-        f"{result['articles_found']}"
-    )
-
-    print(
-        f"Social profiles: "
-        f"{len(result['social_links'])}"
-    )
-
-    print(
-        f"Failed pages: "
-        f"{len(result['failed_urls'])}"
-    )
-
-    print("=" * 70)
-
-    return result
+        finally:
+            await page.close()
+            await browser.close()
 
 
 # ============================================================
