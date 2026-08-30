@@ -21,11 +21,11 @@ if str(BASE_DIR) not in sys.path:
 # =============================================================================
 # DATABASE
 # =============================================================================
-
 from database.models import (
     SessionLocal,
     ContentItem,
     Company,
+    init_db,
 )
 
 
@@ -77,6 +77,9 @@ app = FastAPI(
     ),
     version="3.0.0",
 )
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 
 # =============================================================================
@@ -1617,9 +1620,7 @@ def run_company_pipeline(
 # =============================================================================
 
 if __name__ == "__main__":
-
     import uvicorn
-
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
