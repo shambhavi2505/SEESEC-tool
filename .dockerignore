@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+competitor_data.db
+.env
+.git/
+.gitignore
+dashboard/
+docs/
+reports/
+output/
+README.md
+Documentation.md
