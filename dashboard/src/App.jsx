@@ -6,8 +6,7 @@ import {
 import SearchAnalyzeTab from "./SearchAnalyzeTab";
 import Login from "./Login";
 import CompareCompaniesTab from "./CompareCompaniesTab";
-
-const API = "http://localhost:8000";
+import { API_BASE as API } from "./config";
 
 const COLORS = [
   "#6366f1",
