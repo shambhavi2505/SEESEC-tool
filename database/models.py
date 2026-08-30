@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import (
     create_engine,
     Column,
@@ -343,14 +345,39 @@ class ScrapeRun(Base):
 # ============================================================
 # DATABASE CONNECTION
 # ============================================================
+#
+# Locally (no DATABASE_URL env var set) this falls back to the
+# same SQLite file as before, so local dev is unaffected.
+#
+# On Render, DATABASE_URL will be set to the Postgres "Internal
+# Database URL" you copy from the Postgres dashboard page.
+#
+# Render's Postgres URLs are given in the "postgres://" form,
+# but SQLAlchemy 1.4+ / psycopg2 require "postgresql://" — so
+# we rewrite the prefix if needed.
+# ============================================================
 
-DATABASE_URL = "sqlite:///./competitor_data.db"
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "sqlite:///./competitor_data.db",
+)
+
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgres://", "postgresql://", 1
+    )
+
+# SQLite needs this special connect_arg (single-thread check);
+# Postgres does not use or accept it.
+connect_args = (
+    {"check_same_thread": False}
+    if DATABASE_URL.startswith("sqlite")
+    else {}
+)
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={
-        "check_same_thread": False
-    }
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(
