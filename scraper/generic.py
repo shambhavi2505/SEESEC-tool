@@ -35,6 +35,7 @@ ARTICLE_PATH_KEYWORDS = [
     "post",
     "posts",
 ]
+
 # Bare hub/index pages (e.g. /blog with no further path segments).
 # These are landing pages, not individual articles — they should be
 # crawled INTO for real content, not treated as articles themselves.
@@ -62,6 +63,8 @@ def is_bare_hub_url(url):
         len(segments) == 1
         and segments[0] in HUB_PATH_NAMES
     )
+
+
 CONTENT_TYPE_RULES = {
     "Case Study": [
         "case-study",
@@ -187,6 +190,7 @@ def same_domain(base_url, target_url):
 
     return bool(base_root) and base_root == target_root
 
+
 def is_valid_http_url(url):
     """
     Check whether URL is a normal HTTP/HTTPS URL.
@@ -237,6 +241,7 @@ def is_asset_url(url):
 # ============================================================
 # ARTICLE DETECTION
 # ============================================================
+
 def looks_like_article_url(url):
     """
     Determine whether a URL looks like an article/resource page.
@@ -1043,7 +1048,8 @@ async def scrape_company(
     print(f"Website: {website}")
 
     async with async_playwright() as p:
-            browser = await p.chromium.launch(
+
+        browser = await p.chromium.launch(
             headless=True,
             args=[
                 # Required for Chromium to run reliably inside
@@ -1056,6 +1062,15 @@ async def scrape_company(
                 "--single-process",
             ],
         )
+
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+        )
+
         page = await context.new_page()
 
         try:
@@ -1065,6 +1080,7 @@ async def scrape_company(
             homepage_html = await fetch_page(page, website)
 
             if not homepage_html:
+                await browser.close()
                 return {
                     "website": website,
                     "company_description": None,
@@ -1073,20 +1089,13 @@ async def scrape_company(
                     "articles_found": 0,
                     "articles": [],
                     "social_links": {},
-                    "tech_stack"
+                    "tech_stack": [],
                     "failed_urls": [],
                 }
 
             company_description = extract_description(homepage_html)
             social_links = extract_social_links(homepage_html)
-            social_links = (
-                extract_social_links(
-                    homepage_html
-                )
-            )
-            tech_stack = detect_tech_stack(
-                homepage_html
-        )
+            tech_stack = detect_tech_stack(homepage_html)
 
             # STEP 2 — INTERNAL LINKS
             print("[2/6] Discovering internal links...")
