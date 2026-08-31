@@ -1043,16 +1043,19 @@ async def scrape_company(
     print(f"Website: {website}")
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            )
+            browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                # Required for Chromium to run reliably inside
+                # containers (Docker/Render) — without these it can
+                # crash or hang unpredictably.
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--single-process",
+            ],
         )
-
         page = await context.new_page()
 
         try:
