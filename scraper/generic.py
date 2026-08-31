@@ -1049,18 +1049,29 @@ async def scrape_company(
 
     async with async_playwright() as p:
 
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                # Required for Chromium to run reliably inside
-                # containers (Docker/Render) — without these it can
-                # crash or hang unpredictably.
+        # These flags are needed for Chromium to run reliably inside
+        # a stripped-down Linux container (Docker/Render), but
+        # "--single-process" in particular is unstable outside that
+        # context and can crash Chromium on launch locally (notably
+        # on Windows). Only apply them when actually running in a
+        # container/deployment, detected via the RENDER env var that
+        # Render sets automatically.
+        import os
+
+        if os.environ.get("RENDER"):
+            launch_args = [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--single-process",
-            ],
+            ]
+        else:
+            launch_args = []
+
+        browser = await p.chromium.launch(
+            headless=True,
+            args=launch_args,
         )
 
         context = await browser.new_context(
